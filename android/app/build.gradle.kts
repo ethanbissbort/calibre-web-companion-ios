@@ -9,9 +9,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Release signing is configured via key.properties. When the file is absent
+// (e.g. forks/CI without the keystore secrets), fall back to debug signing so
+// the build still succeeds.
+val keyPropertiesFile = File("key.properties")
+val hasReleaseKeystore = keyPropertiesFile.exists()
+
 val keyProperties = Properties().apply {
-    // load your *.properties file
-    load(FileInputStream(File("key.properties")))
+    if (hasReleaseKeystore) {
+        load(FileInputStream(keyPropertiesFile))
+    }
 }
 
 // Get all properties from key.properties file
@@ -21,10 +28,12 @@ val detStoreFile = keyProperties.getProperty("storeFile")
 val detStorePassword = keyProperties.getProperty("storePassword")
 
 // Validate that required properties exist
-require(detKeyAlias != null) { "keyAlias not found in key.properties file." }
-require(detKeyPassword != null) { "keyPassword not found in key.properties file." }
-require(detStoreFile != null) { "storeFile not found in key.properties file." }
-require(detStorePassword != null) { "storePassword not found in key.properties file." }
+if (hasReleaseKeystore) {
+    require(detKeyAlias != null) { "keyAlias not found in key.properties file." }
+    require(detKeyPassword != null) { "keyPassword not found in key.properties file." }
+    require(detStoreFile != null) { "storeFile not found in key.properties file." }
+    require(detStorePassword != null) { "storePassword not found in key.properties file." }
+}
 
 android {
     namespace = "de.doen1el.calibreWebCompanion"
@@ -52,11 +61,13 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = detKeyAlias
-            keyPassword = detKeyPassword
-            storeFile = file(detStoreFile)
-            storePassword = detStorePassword
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = detKeyAlias
+                keyPassword = detKeyPassword
+                storeFile = file(detStoreFile)
+                storePassword = detStorePassword
+            }
         }
     }
 
@@ -74,7 +85,11 @@ android {
         }
 
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
 
             isMinifyEnabled = true
             isShrinkResources = true

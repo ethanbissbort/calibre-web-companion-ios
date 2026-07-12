@@ -39,12 +39,15 @@ jobs:
       - name: Generate Translation Files
         run: flutter gen-l10n
 
-      #5 Setup Keystore
+      #5 Setup Keystore (skipped on forks without the signing secrets;
+      # the build then falls back to debug signing)
       - name: Decode Keystore
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/keystore.jks
 
       - name: Create key.properties
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         run: |
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
@@ -76,8 +79,9 @@ jobs:
       - name: Generate Play Store changelogs
         run: bash .github/scripts/generate_whatsnew.sh "$VERSION_CODE"
 
-      #7 Upload to Play Store
+      #7 Upload to Play Store (skipped on forks without the Play secrets)
       - name: Upload to Google Play
+        if: ${{ secrets.SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
@@ -127,8 +131,9 @@ jobs:
           echo "----- release_notes.md -----"
           cat release_notes.md
 
-      #12 Create GitHub Release
+      #12 Create GitHub Release (skipped on forks without a release TOKEN)
       - name: Create Release Draft
+        if: ${{ secrets.TOKEN != '' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/app/outputs/flutter-apk/*.apk'
@@ -142,8 +147,10 @@ jobs:
     name: Build iOS (Unsigned IPA)
     runs-on: macos-latest
     # Wait for the Android job so the release draft already exists before the
-    # IPA is attached to it (avoids two jobs racing to create the same tag).
+    # IPA is attached to it (avoids two jobs racing to create the same tag),
+    # but still build the IPA when the Android job fails.
     needs: build
+    if: ${{ !cancelled() }}
 
     steps:
       #1 Checkout Repository
@@ -188,7 +195,9 @@ jobs:
             build/ios/iphoneos/*.ipa
 
       #7 Attach the IPA to the same release draft the Android job created
+      # (skipped on forks without a release TOKEN)
       - name: Attach IPA to Release Draft
+        if: ${{ secrets.TOKEN != '' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/ios/iphoneos/*.ipa'
