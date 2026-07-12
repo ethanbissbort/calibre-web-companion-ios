@@ -9,6 +9,12 @@ jobs:
   build:
     name: Build & Release
     runs-on: ubuntu-latest
+    env:
+      # The secrets context is not allowed in step-level `if:` expressions,
+      # so expose presence flags for forks that don't have these secrets.
+      HAS_ANDROID_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_SECRETS: ${{ secrets.SERVICE_ACCOUNT_JSON != '' }}
+      HAS_RELEASE_TOKEN: ${{ secrets.TOKEN != '' }}
 
     steps:
       #1 Checkout Repository
@@ -42,12 +48,12 @@ jobs:
       #5 Setup Keystore (skipped on forks without the signing secrets;
       # the build then falls back to debug signing)
       - name: Decode Keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/keystore.jks
 
       - name: Create key.properties
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         run: |
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
@@ -81,7 +87,7 @@ jobs:
 
       #7 Upload to Play Store (skipped on forks without the Play secrets)
       - name: Upload to Google Play
-        if: ${{ secrets.SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ env.HAS_PLAY_SECRETS == 'true' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
@@ -133,7 +139,7 @@ jobs:
 
       #12 Create GitHub Release (skipped on forks without a release TOKEN)
       - name: Create Release Draft
-        if: ${{ secrets.TOKEN != '' }}
+        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/app/outputs/flutter-apk/*.apk'
@@ -151,6 +157,8 @@ jobs:
     # but still build the IPA when the Android job fails.
     needs: build
     if: ${{ !cancelled() }}
+    env:
+      HAS_RELEASE_TOKEN: ${{ secrets.TOKEN != '' }}
 
     steps:
       #1 Checkout Repository
@@ -197,7 +205,7 @@ jobs:
       #7 Attach the IPA to the same release draft the Android job created
       # (skipped on forks without a release TOKEN)
       - name: Attach IPA to Release Draft
-        if: ${{ secrets.TOKEN != '' }}
+        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/ios/iphoneos/*.ipa'
