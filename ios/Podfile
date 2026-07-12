@@ -1,4 +1,4 @@
-platform :ios, '13.0'
+platform :ios, '18.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -42,8 +42,8 @@ post_install do |installer|
       # Keep every pod on a consistent minimum deployment target so pods
       # with older podspecs (e.g. OrderedSet) build against the same SDK
       # baseline as the Runner target.
-      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 13.0
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 18.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.0'
       end
     end
   end

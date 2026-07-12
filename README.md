@@ -54,27 +54,52 @@ The app is built with [Flutter](https://github.com/flutter/flutter) and uses **M
 
 ### 🍎 iOS (Sideloading)
 
-The iOS version is **not available on the App Store**. Calibre Web Companion is an open-source companion app for self-hosted servers and is distributed for iOS as an **unsigned `.ipa`** on the [releases page](https://github.com/doen1el/calibre-web-companion/releases). Since the IPA is unsigned, it has to be signed on or for your own device by sideloading it, for example with:
+The iOS version is **not available on the App Store**. Calibre Web Companion is an open-source companion app for self-hosted servers and is distributed for iOS as an **unsigned `.ipa`** on the [releases page](https://github.com/ethanbissbort/calibre-web-companion-ios/releases). It requires **iOS 18.0 or later**. Since the IPA is unsigned, it has to be signed on or for your own device by sideloading it, for example with:
 
 - [AltStore](https://altstore.io/): installs and re-signs the IPA with your own (free) Apple ID. Free Apple IDs are limited to 3 sideloaded apps and a 7-day signing period, but AltStore can refresh them automatically.
 - [Sideloadly](https://sideloadly.io/): signs and installs the IPA from your Mac or PC.
 - [TrollStore](https://github.com/opa334/TrollStore): permanent installation without re-signing (only on supported iOS versions).
 
-Download `calibre_web_companion_unsigned.ipa` from the [releases page](https://github.com/doen1el/calibre-web-companion/releases) and install it with the tool of your choice.
+Download `calibre_web_companion_unsigned.ipa` from the [releases page](https://github.com/ethanbissbort/calibre-web-companion-ios/releases) and install it with the tool of your choice.
 
 #### Building from source (macOS)
 
-Building the iOS app requires a Mac with [Xcode](https://developer.apple.com/xcode/) and [Flutter](https://docs.flutter.dev/get-started/install/macos) installed:
+Requirements:
+
+- A Mac with [Xcode 26](https://developer.apple.com/xcode/) (iOS 26 SDK) or later
+- [Flutter](https://docs.flutter.dev/get-started/install/macos) (stable channel) and [CocoaPods](https://cocoapods.org/) (`sudo gem install cocoapods` or `brew install cocoapods`)
+- The app targets the latest iOS SDK with a minimum deployment target of **iOS 18.0**
+
+To build the unsigned sideloadable IPA from the command line:
 
 ```sh
-git clone https://github.com/doen1el/calibre-web-companion.git
-cd calibre-web-companion
+git clone https://github.com/ethanbissbort/calibre-web-companion-ios.git
+cd calibre-web-companion-ios
 flutter pub get
 flutter gen-l10n
 ./ios/create_unsigned_ipa.sh
 ```
 
-The script runs `flutter build ios --release --no-codesign` and packages the result into `build/ios/iphoneos/calibre_web_companion_unsigned.ipa`. If you have an Apple Developer account, you can instead open `ios/Runner.xcworkspace` in Xcode and build a signed version directly onto your device.
+The script runs `flutter build ios --release --no-codesign` and packages the result into `build/ios/iphoneos/calibre_web_companion_unsigned.ipa`.
+
+#### Building & running with Xcode
+
+To build straight onto a device (or the simulator) from Xcode:
+
+```sh
+flutter pub get
+flutter gen-l10n
+cd ios && pod install && cd ..
+open ios/Runner.xcworkspace
+```
+
+Then in Xcode:
+
+1. Select the **Runner** target → **Signing & Capabilities** and choose your own team under **Team** (a free Apple ID works for on-device development; no team is checked in).
+2. Pick your device or an iOS simulator as the run destination.
+3. Build & run (**⌘R**). Xcode signs the app automatically for your device.
+
+Alternatively, `flutter run` from the repo root does all of the above (including `pod install`) once the team is set in Xcode.
 
 #### iOS notes
 
