@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:docman/docman.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -24,8 +23,54 @@ class DownloadOptionsWidget extends StatelessWidget {
         if (Platform.isAndroid) ...[
           _buildSelectingDownloadFolder(context),
           _buildSelectingDownloadSchema(context),
+        ] else if (Platform.isIOS) ...[
+          // iOS has no folder picker that can persist access across launches.
+          // Downloads always go to the app's Documents directory, which is
+          // exposed to the user via the Files app.
+          _buildFixedDownloadLocationInfo(context),
+          _buildSelectingDownloadSchema(context),
         ],
       ],
+    );
+  }
+
+  Widget _buildFixedDownloadLocationInfo(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localizations.downloadFolder,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    localizations.downloadsSavedToAppDocuments,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Icon(
+              Icons.folder_rounded,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -75,14 +120,14 @@ class DownloadOptionsWidget extends StatelessWidget {
                         Theme.of(context).colorScheme.primaryContainer,
                   ),
                   onPressed: () async {
+                    // Only rendered on Android (see build), where the SAF
+                    // folder picker is the one that can persist access.
                     String? selectedPath;
 
                     if (Platform.isAndroid) {
                       DocumentFile? selectedDirectory =
                           await DocMan.pick.directory();
                       selectedPath = selectedDirectory?.uri;
-                    } else {
-                      selectedPath = await FilePicker.getDirectoryPath();
                     }
 
                     if (selectedPath == null) {

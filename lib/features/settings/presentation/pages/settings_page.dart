@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:docman/docman.dart';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 
 import 'package:calibre_web_companion/features/settings/bloc/settings_bloc.dart';
 import 'package:calibre_web_companion/features/settings/bloc/settings_event.dart';
@@ -899,15 +898,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         }
 
                         if (state.defaultDownloadPath.isEmpty) {
-                          String? selectedPath;
-
-                          if (Platform.isAndroid) {
-                            final selectedDirectory =
-                                await DocMan.pick.directory();
-                            selectedPath = selectedDirectory?.uri;
-                          } else {
-                            selectedPath = await FilePicker.getDirectoryPath();
-                          }
+                          // This toggle is only rendered on Android (see the
+                          // Platform.isAndroid gate above), so the SAF picker
+                          // is always the right one here.
+                          final selectedDirectory =
+                              await DocMan.pick.directory();
+                          final selectedPath = selectedDirectory?.uri;
 
                           if (selectedPath == null) {
                             if (context.mounted) {

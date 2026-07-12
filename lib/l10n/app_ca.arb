@@ -245,6 +245,7 @@
     "downloadSchema": "Descarrega esquema",
     "noFolderSelected": "Sense carpeta seleccionada",
     "downloadFolder": "Descarrega carpeta",
+    "downloadsSavedToAppDocuments": "Els llibres es desen a la carpeta d'aquesta aplicació, visible a l'app Fitxers (Al meu iPhone > Calibre Web Companion).",
     "openInReader": "Obrir en lector",
     "bookOpenedExternallySuccessfully": "Llibre obert amb lector extern",
     "openBookExternallyFailed": "Fallida a l'obrir llibre externament",

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:calibre_web_companion/l10n/app_localizations.dart';
@@ -142,6 +144,11 @@ class ThemeSelectorWidget extends StatelessWidget {
   Widget _buildColorThemeSelector(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
 
+    // Material You / dynamic color is not available on iOS, so the
+    // "System" theme source is hidden there and the color palette is
+    // always shown instead.
+    final bool supportsDynamicColor = !Platform.isIOS;
+
     return BlocBuilder<SettingsBloc, SettingsState>(
       buildWhen:
           (previous, current) =>
@@ -173,31 +180,33 @@ class ThemeSelectorWidget extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                    DropdownButton<ThemeSource>(
-                      value: state.themeSource,
-                      underline: Container(),
-                      onChanged: (ThemeSource? newValue) {
-                        if (newValue != null) {
-                          context.read<SettingsBloc>().add(
-                            SetThemeSource(newValue),
-                          );
-                        }
-                      },
-                      items: [
-                        DropdownMenuItem(
-                          value: ThemeSource.system,
-                          child: Text(localizations.system),
-                        ),
-                        DropdownMenuItem(
-                          value: ThemeSource.custom,
-                          child: Text(localizations.custom),
-                        ),
-                      ],
-                    ),
+                    if (supportsDynamicColor)
+                      DropdownButton<ThemeSource>(
+                        value: state.themeSource,
+                        underline: Container(),
+                        onChanged: (ThemeSource? newValue) {
+                          if (newValue != null) {
+                            context.read<SettingsBloc>().add(
+                              SetThemeSource(newValue),
+                            );
+                          }
+                        },
+                        items: [
+                          DropdownMenuItem(
+                            value: ThemeSource.system,
+                            child: Text(localizations.system),
+                          ),
+                          DropdownMenuItem(
+                            value: ThemeSource.custom,
+                            child: Text(localizations.custom),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
 
-                if (state.themeSource == ThemeSource.custom) ...[
+                if (state.themeSource == ThemeSource.custom ||
+                    !supportsDynamicColor) ...[
                   const SizedBox(height: 16),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -271,7 +280,8 @@ class ThemeSelectorWidget extends StatelessWidget {
                   ),
                 ],
 
-                if (state.themeSource == ThemeSource.system) ...[
+                if (supportsDynamicColor &&
+                    state.themeSource == ThemeSource.system) ...[
                   const SizedBox(height: 12),
                   Text(
                     localizations.systemThemeDescription,

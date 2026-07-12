@@ -31,9 +31,11 @@
 
 This is an unofficial companion application for [Calibre Web](https://github.com/janeczku/calibre-web) (which also works for [Calibre Web Automated](https://github.com/crocodilestick/Calibre-Web-Automated), [Grimmory](https://github.com/grimmory-tools/grimmory), [Calibre 'Sharing over the net'](https://github.com/kovidgoyal/calibre) and other OPDS providers (beta)), that allows you to browse your book collection and download books directly to your device. You can also interact with your books by marking them as read, unread or bookmarked. It is also possible to send books directly to your e-reader (Kindle/Kobo) thanks to the great work of [send2ereader](https://github.com/daniel-j/send2ereader).
 
-The app is built with [Flutter](https://github.com/flutter/flutter) and uses **Material You**. It is currently available for **Android** only.
+The app is built with [Flutter](https://github.com/flutter/flutter) and uses **Material You**. It is available for **Android**, and for **iOS** as a sideloadable build (see [iOS](#-ios-sideloading)).
 
 ## 📦 Installation
+
+### 🤖 Android
 
 <p align="left">
     <a href="https://f-droid.org/en/packages/de.doen1el.calibreWebCompanion/">
@@ -49,6 +51,35 @@ The app is built with [Flutter](https://github.com/flutter/flutter) and uses **M
         <img src="docs/badges/badge_obtainium.png" alt="Get it on Obtainium" height="80">
     </a>
 </p>
+
+### 🍎 iOS (Sideloading)
+
+The iOS version is **not available on the App Store**. Calibre Web Companion is an open-source companion app for self-hosted servers and is distributed for iOS as an **unsigned `.ipa`** on the [releases page](https://github.com/doen1el/calibre-web-companion/releases). Since the IPA is unsigned, it has to be signed on or for your own device by sideloading it, for example with:
+
+- [AltStore](https://altstore.io/): installs and re-signs the IPA with your own (free) Apple ID. Free Apple IDs are limited to 3 sideloaded apps and a 7-day signing period, but AltStore can refresh them automatically.
+- [Sideloadly](https://sideloadly.io/): signs and installs the IPA from your Mac or PC.
+- [TrollStore](https://github.com/opa334/TrollStore): permanent installation without re-signing (only on supported iOS versions).
+
+Download `calibre_web_companion_unsigned.ipa` from the [releases page](https://github.com/doen1el/calibre-web-companion/releases) and install it with the tool of your choice.
+
+#### Building from source (macOS)
+
+Building the iOS app requires a Mac with [Xcode](https://developer.apple.com/xcode/) and [Flutter](https://docs.flutter.dev/get-started/install/macos) installed:
+
+```sh
+git clone https://github.com/doen1el/calibre-web-companion.git
+cd calibre-web-companion
+flutter pub get
+flutter gen-l10n
+./ios/create_unsigned_ipa.sh
+```
+
+The script runs `flutter build ios --release --no-codesign` and packages the result into `build/ios/iphoneos/calibre_web_companion_unsigned.ipa`. If you have an Apple Developer account, you can instead open `ios/Runner.xcworkspace` in Xcode and build a signed version directly onto your device.
+
+#### iOS notes
+
+- Downloaded and offline-synced books are stored in the app's own folder, which you can browse in the **Files** app under **On My iPhone/iPad → Calibre Web Companion**.
+- Plain **HTTP** servers (e.g. a local IP without TLS) are supported: the app ships with an App Transport Security exception, so your Calibre-Web instance does not have to be reachable via HTTPS.
 
 ## 💪 Features
 

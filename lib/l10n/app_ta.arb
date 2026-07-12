@@ -266,6 +266,7 @@
     "downloadSchema": "ச்கீமாவைப் பதிவிறக்கவும்",
     "noFolderSelected": "கோப்புறை எதுவும் தேர்ந்தெடுக்கப்படவில்லை",
     "downloadFolder": "பதிவிறக்க கோப்புறை",
+    "downloadsSavedToAppDocuments": "Books are saved to this app's folder, visible in the Files app (On My iPhone > Calibre Web Companion).",
     "openInReader": "ரீடரில் திறக்கவும்",
     "bookOpenedExternallySuccessfully": "நூல் வெளிப்புறமாக வெற்றிகரமாக திறக்கப்பட்டது",
     "openBookExternallyFailed": "புத்தகத்தை வெளிப்புறமாக திறக்க முடியவில்லை",

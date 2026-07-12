@@ -245,6 +245,7 @@
     "downloadSchema": "Schéma de téléchargement",
     "noFolderSelected": "Aucun dossier sélectionné",
     "downloadFolder": "Dossier de téléchargement",
+    "downloadsSavedToAppDocuments": "Les livres sont enregistrés dans le dossier de cette application, visible dans l’app Fichiers (Sur mon iPhone > Calibre Web Companion).",
     "openInReader": "Ouvrir dans le lecteur",
     "bookOpenedExternallySuccessfully": "Livre ouvert avec succès dans l'application externe",
     "openBookExternallyFailed": "Échec de l'ouverture du livre dans l'application externe",

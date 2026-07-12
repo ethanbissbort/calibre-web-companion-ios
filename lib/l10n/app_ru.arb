@@ -244,6 +244,7 @@
     "downloadSchema": "Схема загрузки",
     "noFolderSelected": "Папка не выбрана",
     "downloadFolder": "Папка загрузки",
+    "downloadsSavedToAppDocuments": "Книги сохраняются в папке этого приложения и доступны в приложении «Файлы» (На iPhone > Calibre Web Companion).",
     "openInReader": "Открыть в читалке",
     "bookOpenedExternallySuccessfully": "Книга успешно открыта во внешнем приложении",
     "openBookExternallyFailed": "Не удалось открыть книгу во внешнем приложении",

@@ -88,18 +88,7 @@ jobs:
           releaseName: 'Release ${{ github.run_number }}'
           whatsNewDirectory: distribution/whatsnew
 
-      # #8 Build iOS (.app)
-      # - name: Build iOS (Unsigned)
-      #   run: flutter build ios --release --no-codesign
-
-      # #9 Create IPA for Sideloading
-      # - name: Package IPA
-      #   run: |
-      #     mkdir Payload
-      #     mv build/ios/iphoneos/Runner.app Payload/
-      #     zip -qq -r release.ipa Payload
-
-      #10 Upload Artifacts (APK,IPA)
+      #10 Upload Artifacts (APK)
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -148,3 +137,66 @@ jobs:
           token: ${{ secrets.TOKEN }}
           name: 'Release v${{ env.VERSION }}'
           bodyFile: release_notes.md
+
+  build-ios:
+    name: Build iOS (Unsigned IPA)
+    runs-on: macos-latest
+    # Wait for the Android job so the release draft already exists before the
+    # IPA is attached to it (avoids two jobs racing to create the same tag).
+    needs: build
+
+    steps:
+      #1 Checkout Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      #2 Setup Flutter
+      - name: Set Up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: 'stable'
+
+      #3 Install Dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      #3.5 Generate translation files
+      - name: Generate Translation Files
+        run: flutter gen-l10n
+
+      #4 Build the unsigned IPA for sideloading
+      - name: Build Unsigned IPA
+        run: bash ios/create_unsigned_ipa.sh
+
+      #5 Extract version (used for the release tag)
+      - name: Extract version
+        run: |
+          full=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r ')
+          version="${full%%+*}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "Version $version"
+
+      #6 Upload Artifacts (IPA)
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Releases-iOS
+          path: |
+            build/ios/iphoneos/*.ipa
+
+      #7 Attach the IPA to the same release draft the Android job created
+      - name: Attach IPA to Release Draft
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: 'build/ios/iphoneos/*.ipa'
+          tag: v${{ env.VERSION }}
+          draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitDraftDuringUpdate: true
+          token: ${{ secrets.TOKEN }}

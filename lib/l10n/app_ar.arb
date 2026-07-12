@@ -250,6 +250,7 @@
     "downloadSchema": "تنزيل المخطط",
     "noFolderSelected": "لم يتم تحديد أي مجلد",
     "downloadFolder": "تنزيل المجلد",
+    "downloadsSavedToAppDocuments": "يتم حفظ الكتب في مجلد هذا التطبيق ويمكن الوصول إليها من تطبيق الملفات (على iPhone > Calibre Web Companion).",
     "openInReader": "فتح في القارئ",
     "bookOpenedExternallySuccessfully": "تم فتح الكتاب خارجيًا بنجاح",
     "openBookExternallyFailed": "فشل فتح الكتاب خارجيًا",
