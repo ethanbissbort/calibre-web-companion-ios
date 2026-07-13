@@ -242,6 +242,7 @@
     "schemaWasSelectedSuccessfully": "Útvonal sikeresen kiválasztva",
     "noFolderSelected": "Nincs mappa kiválasztva",
     "downloadFolder": "Letöltési mappa",
+    "downloadsSavedToAppDocuments": "A könyvek az alkalmazás mappájába kerülnek, amely a Fájlok alkalmazásban látható (Az iPhone-omon > Calibre Web Companion).",
     "openInReader": "Megnyitás olvasóban",
     "bookOpenedExternallySuccessfully": "Könyv sikeresen megnyitva külső alkalmazásban",
     "openBookExternallyFailed": "Sikertelen megnyitás külső alkalmazásban",

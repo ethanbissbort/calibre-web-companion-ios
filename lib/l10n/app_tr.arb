@@ -261,6 +261,7 @@
     "bookRemovedFromShelf": "",
     "createShelf": "",
     "downloadFolder": "",
+    "downloadsSavedToAppDocuments": "Kitaplar bu uygulamanın klasörüne kaydedilir ve Dosyalar uygulamasında görünür (iPhone'umda > Calibre Web Companion).",
     "openBookInBrowser": "",
     "sslCertificate": "",
     "errorDownloading": "",

@@ -4,10 +4,45 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses the camera to scan book barcodes (ISBN).</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app accesses your photo library so you can choose an image as a book cover.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ar</string>
+		<string>ca</string>
+		<string>de</string>
+		<string>en</string>
+		<string>es</string>
+		<string>et</string>
+		<string>fr</string>
+		<string>hu</string>
+		<string>it</string>
+		<string>nl</string>
+		<string>pt</string>
+		<string>ru</string>
+		<string>sv</string>
+		<string>ta</string>
+		<string>tr</string>
+		<string>uk</string>
+		<string>zh</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Calibre Web Companion</string>
 	<key>CFBundleExecutable</key>

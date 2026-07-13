@@ -801,6 +801,7 @@ class BookDetailsRemoteDatasource {
         localPath = await downloadBookToDevice(
           book,
           format: format,
+          schema: schema,
           progressCallback: progressCallback,
         );
         durablePath = localPath;
@@ -977,23 +978,98 @@ class BookDetailsRemoteDatasource {
     return Uint8List.fromList(bytes);
   }
 
+  /// Mirrors the SAF schema layout of [downloadBookToPath] for plain
+  /// filesystem targets (iOS/macOS app sandbox and other non-SAF platforms).
+  Future<Directory> _getOrCreateLocalSchemaDirectory(
+    Directory baseDir,
+    BookDetailsModel book,
+    DownloadSchema schema,
+  ) async {
+    final safeTitle =
+        book.title.replaceAll(RegExp(r'[\\/:*?"<>|.]'), '').trim();
+    final safeAuthor =
+        book.authors.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+    final safeAuthorSort =
+        book.authorSort.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+    final safeSeries =
+        book.series.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+
+    final segments = <String>[];
+
+    switch (schema) {
+      case DownloadSchema.flat:
+        break;
+      case DownloadSchema.authorOnly:
+        segments.add(safeAuthor);
+        break;
+      case DownloadSchema.authorBook:
+        segments.addAll([safeAuthor, safeTitle]);
+        break;
+      case DownloadSchema.authorSeriesBook:
+        segments.add(safeAuthor);
+        if (safeSeries.isNotEmpty) segments.add(safeSeries);
+        segments.add(safeTitle);
+        break;
+      case DownloadSchema.authorSortOnly:
+        segments.add(safeAuthorSort);
+        break;
+      case DownloadSchema.authorSortBook:
+        segments.addAll([safeAuthorSort, safeTitle]);
+        break;
+      case DownloadSchema.authorSortSeriesBook:
+        segments.add(safeAuthorSort);
+        if (safeSeries.isNotEmpty) segments.add(safeSeries);
+        segments.add(safeTitle);
+        break;
+    }
+
+    segments.removeWhere((segment) => segment.isEmpty);
+
+    if (segments.isEmpty) {
+      return baseDir;
+    }
+
+    final targetDir = Directory(path.joinAll([baseDir.path, ...segments]));
+    if (!targetDir.existsSync()) {
+      await targetDir.create(recursive: true);
+    }
+    return targetDir;
+  }
+
   Future<String> downloadBookToDevice(
     BookDetailsModel book, {
     String format = 'epub',
+    DownloadSchema schema = DownloadSchema.flat,
     Function(int)? progressCallback,
+    bool reuseExistingFile = true,
   }) async {
-    logger.i('Downloading "${book.title}" to app sandbox, format: $format');
-    final bytes = await streamBookBytes(
-      book,
-      format: format,
-      progressCallback: progressCallback,
+    logger.i(
+      'Downloading "${book.title}" to app sandbox, format: $format, schema: $schema',
     );
 
     final dir = await getApplicationDocumentsDirectory();
     final safeTitle =
         book.title.replaceAll(RegExp(r'[\\/:*?"<>|.]'), '').trim();
     final fileName = '${safeTitle.isEmpty ? 'book' : safeTitle}.$format';
-    final file = File('${dir.path}/$fileName');
+
+    final targetDir = await _getOrCreateLocalSchemaDirectory(
+      dir,
+      book,
+      schema,
+    );
+    final file = File(path.join(targetDir.path, fileName));
+
+    if (reuseExistingFile && file.existsSync()) {
+      logger.w('File already exists: ${file.path}');
+      return file.path;
+    }
+
+    final bytes = await streamBookBytes(
+      book,
+      format: format,
+      progressCallback: progressCallback,
+    );
+
     await file.writeAsBytes(bytes, flush: true);
 
     logger.i('Saved book to ${file.path}');

@@ -238,6 +238,7 @@
     "schemaWasSelectedSuccessfully": "Lo schema è stato selezionato correttamente",
     "noFolderSelected": "Nessuna cartella selezionata",
     "downloadFolder": "Cartella di download",
+    "downloadsSavedToAppDocuments": "I libri vengono salvati nella cartella di questa app, visibile nell’app File (Sul mio iPhone > Calibre Web Companion).",
     "openInReader": "Apri le lettore",
     "bookOpenedExternallySuccessfully": "Libro aperto esternamente con successo",
     "openBookExternallyFailed": "Impossibile aprire il libro esternamente",

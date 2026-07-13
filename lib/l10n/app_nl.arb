@@ -249,6 +249,7 @@
     "bookRemovedFromShelf": "",
     "createShelf": "",
     "downloadFolder": "",
+    "downloadsSavedToAppDocuments": "Boeken worden opgeslagen in de map van deze app, zichtbaar in de Bestanden-app (Op mijn iPhone > Calibre Web Companion).",
     "openBookInBrowser": "",
     "sslCertificate": "",
     "errorDownloading": "",

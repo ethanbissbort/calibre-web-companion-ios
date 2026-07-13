@@ -267,6 +267,7 @@
   "downloadSchema": "Download schema",
   "noFolderSelected": "No folder selected",
   "downloadFolder": "Download folder",
+  "downloadsSavedToAppDocuments": "Books are saved to this app's folder, visible in the Files app (On My iPhone > Calibre Web Companion).",
   "openInReader": "Open in reader",
   "bookOpenedExternallySuccessfully": "Book opened externally successfully",
   "openBookExternallyFailed": "Failed to open book externally",

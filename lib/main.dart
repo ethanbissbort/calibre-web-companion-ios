@@ -1,5 +1,6 @@
 import 'package:adaptive_theme/adaptive_theme.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
@@ -194,14 +195,18 @@ class _MyAppState extends State<MyApp> {
       builder: (context, settingsState) {
         return DynamicColorBuilder(
           builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+            // Material You / dynamic color is not available on iOS, so the
+            // "System" theme source falls back to the user's selected color.
+            final themeSource =
+                Platform.isIOS ? ThemeSource.custom : settingsState.themeSource;
+
             final seedColor =
-                settingsState.themeSource == ThemeSource.custom
+                themeSource == ThemeSource.custom
                     ? settingsState.selectedColor
                     : Colors.lightGreen;
 
             final lightScheme =
-                settingsState.themeSource == ThemeSource.system &&
-                        lightDynamic != null
+                themeSource == ThemeSource.system && lightDynamic != null
                     ? lightDynamic
                     : ColorScheme.fromSeed(
                       seedColor: seedColor,
@@ -209,8 +214,7 @@ class _MyAppState extends State<MyApp> {
                     );
 
             final darkScheme =
-                settingsState.themeSource == ThemeSource.system &&
-                        darkDynamic != null
+                themeSource == ThemeSource.system && darkDynamic != null
                     ? darkDynamic
                     : ColorScheme.fromSeed(
                       seedColor: seedColor,

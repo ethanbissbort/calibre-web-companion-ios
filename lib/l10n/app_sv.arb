@@ -242,6 +242,7 @@
     "downloadSchema": "Ladda ner schema",
     "noFolderSelected": "Ingen mapp vald",
     "downloadFolder": "Ladda ner mappen",
+    "downloadsSavedToAppDocuments": "Böcker sparas i appens mapp och visas i appen Filer (På min iPhone > Calibre Web Companion).",
     "openInReader": "Öppna i läsaren",
     "bookOpenedExternallySuccessfully": "Boken öppnade externt framgångsrikt",
     "openBookExternallyFailed": "Misslyckades med att öppna boken externt",

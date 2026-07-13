@@ -9,6 +9,12 @@ jobs:
   build:
     name: Build & Release
     runs-on: ubuntu-latest
+    env:
+      # The secrets context is not allowed in step-level `if:` expressions,
+      # so expose presence flags for forks that don't have these secrets.
+      HAS_ANDROID_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_SECRETS: ${{ secrets.SERVICE_ACCOUNT_JSON != '' }}
+      HAS_RELEASE_TOKEN: ${{ secrets.TOKEN != '' }}
 
     steps:
       #1 Checkout Repository
@@ -39,12 +45,15 @@ jobs:
       - name: Generate Translation Files
         run: flutter gen-l10n
 
-      #5 Setup Keystore
+      #5 Setup Keystore (skipped on forks without the signing secrets;
+      # the build then falls back to debug signing)
       - name: Decode Keystore
+        if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/keystore.jks
 
       - name: Create key.properties
+        if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         run: |
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
@@ -76,8 +85,9 @@ jobs:
       - name: Generate Play Store changelogs
         run: bash .github/scripts/generate_whatsnew.sh "$VERSION_CODE"
 
-      #7 Upload to Play Store
+      #7 Upload to Play Store (skipped on forks without the Play secrets)
       - name: Upload to Google Play
+        if: ${{ env.HAS_PLAY_SECRETS == 'true' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
@@ -88,18 +98,7 @@ jobs:
           releaseName: 'Release ${{ github.run_number }}'
           whatsNewDirectory: distribution/whatsnew
 
-      # #8 Build iOS (.app)
-      # - name: Build iOS (Unsigned)
-      #   run: flutter build ios --release --no-codesign
-
-      # #9 Create IPA for Sideloading
-      # - name: Package IPA
-      #   run: |
-      #     mkdir Payload
-      #     mv build/ios/iphoneos/Runner.app Payload/
-      #     zip -qq -r release.ipa Payload
-
-      #10 Upload Artifacts (APK,IPA)
+      #10 Upload Artifacts (APK)
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -138,8 +137,9 @@ jobs:
           echo "----- release_notes.md -----"
           cat release_notes.md
 
-      #12 Create GitHub Release
+      #12 Create GitHub Release (skipped on forks without a release TOKEN)
       - name: Create Release Draft
+        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/app/outputs/flutter-apk/*.apk'
@@ -148,3 +148,72 @@ jobs:
           token: ${{ secrets.TOKEN }}
           name: 'Release v${{ env.VERSION }}'
           bodyFile: release_notes.md
+
+  build-ios:
+    name: Build iOS (Unsigned IPA)
+    runs-on: macos-latest
+    # Wait for the Android job so the release draft already exists before the
+    # IPA is attached to it (avoids two jobs racing to create the same tag),
+    # but still build the IPA when the Android job fails.
+    needs: build
+    if: ${{ !cancelled() }}
+    env:
+      HAS_RELEASE_TOKEN: ${{ secrets.TOKEN != '' }}
+
+    steps:
+      #1 Checkout Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      #2 Setup Flutter
+      - name: Set Up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: 'stable'
+
+      #3 Install Dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      #3.5 Generate translation files
+      - name: Generate Translation Files
+        run: flutter gen-l10n
+
+      #4 Build the unsigned IPA for sideloading
+      - name: Build Unsigned IPA
+        run: bash ios/create_unsigned_ipa.sh
+
+      #5 Extract version (used for the release tag)
+      - name: Extract version
+        run: |
+          full=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r ')
+          version="${full%%+*}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "Version $version"
+
+      #6 Upload Artifacts (IPA)
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Releases-iOS
+          path: |
+            build/ios/iphoneos/*.ipa
+
+      #7 Attach the IPA to the same release draft the Android job created
+      # (skipped on forks without a release TOKEN)
+      - name: Attach IPA to Release Draft
+        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: 'build/ios/iphoneos/*.ipa'
+          tag: v${{ env.VERSION }}
+          draft: true
+          allowUpdates: true
+          updateOnlyUnreleased: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          omitDraftDuringUpdate: true
+          token: ${{ secrets.TOKEN }}

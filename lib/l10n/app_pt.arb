@@ -244,6 +244,7 @@
     "downloadSchema": "Esquema de download",
     "noFolderSelected": "Nenhuma pasta selecionada",
     "downloadFolder": "Pasta de download",
+    "downloadsSavedToAppDocuments": "Os livros são guardados na pasta desta aplicação, visível na app Ficheiros (No meu iPhone > Calibre Web Companion).",
     "openInReader": "Abrir no leitor",
     "bookOpenedExternallySuccessfully": "Livro aberto externamente com sucesso",
     "openBookExternallyFailed": "Falha ao abrir livro externamente",

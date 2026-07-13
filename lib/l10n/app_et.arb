@@ -275,6 +275,7 @@
     "bookRemovedFromShelf": "",
     "createShelf": "",
     "downloadFolder": "",
+    "downloadsSavedToAppDocuments": "Books are saved to this app's folder, visible in the Files app (On My iPhone > Calibre Web Companion).",
     "openBookInBrowser": "",
     "sslCertificate": "",
     "errorDownloading": "",

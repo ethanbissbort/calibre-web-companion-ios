@@ -195,10 +195,12 @@ class BookDetailsRepository {
   Future<String> downloadBookToDevice(
     BookDetailsModel book, {
     String format = 'epub',
+    DownloadSchema schema = DownloadSchema.flat,
     Function(int)? progressCallback,
   }) => datasource.downloadBookToDevice(
     book,
     format: format,
+    schema: schema,
     progressCallback: progressCallback,
   );
 

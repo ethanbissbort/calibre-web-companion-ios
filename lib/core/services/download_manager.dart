@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:docman/docman.dart';
 import 'package:logger/logger.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DownloadManager {
@@ -46,13 +47,47 @@ class DownloadManager {
     }
   }
 
+  /// On iOS (and macOS) the app sandbox container path — and with it the
+  /// absolute path of the Documents directory — changes whenever the app is
+  /// updated. Try to re-resolve a stale absolute path against the current
+  /// Documents directory before treating the file as gone.
+  Future<String?> _relocateFile(String path) async {
+    if (Platform.isAndroid) return null;
+
+    const marker = '/Documents/';
+    final index = path.indexOf(marker);
+    if (index == -1) return null;
+
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final candidate =
+          '${documentsDir.path}/${path.substring(index + marker.length)}';
+      if (candidate != path && File(candidate).existsSync()) {
+        return candidate;
+      }
+    } catch (e) {
+      _logger.w('Failed to relocate $path: $e');
+    }
+    return null;
+  }
+
   Future<void> _verifyFilesExist() async {
     final List<String> toRemove = [];
+    final Map<String, String> toRelocate = {};
 
     for (var entry in _downloadedBooks.entries) {
       final exists = await _doesFileExist(entry.value);
 
       if (!exists) {
+        final relocated = await _relocateFile(entry.value);
+        if (relocated != null) {
+          _logger.i(
+            'File for book ${entry.key} moved to $relocated. Updating path.',
+          );
+          toRelocate[entry.key] = relocated;
+          continue;
+        }
+
         _logger.i(
           'File for book ${entry.key} not found at ${entry.value}. Removing from list.',
         );
@@ -60,10 +95,11 @@ class DownloadManager {
       }
     }
 
-    if (toRemove.isNotEmpty) {
+    if (toRemove.isNotEmpty || toRelocate.isNotEmpty) {
       for (var uuid in toRemove) {
         _downloadedBooks.remove(uuid);
       }
+      _downloadedBooks.addAll(toRelocate);
       await _save();
     }
 
@@ -78,6 +114,16 @@ class DownloadManager {
 
     final exists = await _doesFileExist(path);
     if (!exists) {
+      final relocated = await _relocateFile(path);
+      if (relocated != null) {
+        _logger.i(
+          'Runtime check: File for $uuid moved. Updating path to $relocated.',
+        );
+        _downloadedBooks[uuid] = relocated;
+        await _save();
+        return true;
+      }
+
       _logger.i('Runtime check: File for $uuid missing. Unregistering.');
       await unregisterDownload(uuid);
       return false;

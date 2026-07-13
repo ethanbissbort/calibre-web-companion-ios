@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:docman/docman.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logger/logger.dart';
 import 'package:get_it/get_it.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import 'package:calibre_web_companion/features/sync/bloc/sync_event.dart';
 import 'package:calibre_web_companion/features/sync/bloc/sync_state.dart';
@@ -13,6 +17,8 @@ import 'package:calibre_web_companion/features/settings/data/repositories/settin
 import 'package:calibre_web_companion/features/offline/data/models/offline_book_model.dart';
 import 'package:calibre_web_companion/features/offline/data/repositories/offline_library_repository.dart';
 import 'package:calibre_web_companion/features/book_view/data/models/book_view_model.dart';
+import 'package:calibre_web_companion/features/book_details/data/models/book_details_model.dart';
+import 'package:calibre_web_companion/features/settings/data/models/download_schema.dart';
 import 'package:calibre_web_companion/features/shelf_details/data/repositories/shelf_details_repository.dart';
 import 'package:calibre_web_companion/core/services/api_service.dart';
 
@@ -51,7 +57,9 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
   Future<void> _onStartSync(StartSync event, Emitter<SyncState> emit) async {
     final settings = await settingsRepository.getSettings();
 
-    if (settings.defaultDownloadPath.isEmpty) {
+    // A download folder is only required on Android (SAF). On iOS books are
+    // synced into the app's own Documents directory automatically.
+    if (Platform.isAndroid && settings.defaultDownloadPath.isEmpty) {
       emit(
         state.copyWith(
           status: SyncStatus.error,
@@ -414,15 +422,17 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
     try {
       final settings = await settingsRepository.getSettings();
       DocumentFile? dir;
-      try {
-        if (settings.defaultDownloadPath.isNotEmpty) {
-          dir = await DocumentFile.fromUri(settings.defaultDownloadPath);
+      if (Platform.isAndroid) {
+        try {
+          if (settings.defaultDownloadPath.isNotEmpty) {
+            dir = await DocumentFile.fromUri(settings.defaultDownloadPath);
+          }
+        } catch (e) {
+          logger.e('Error accessing download directory: $e');
         }
-      } catch (e) {
-        logger.e('Error accessing download directory: $e');
-      }
 
-      if (dir == null) throw Exception("Invalid download directory");
+        if (dir == null) throw Exception("Invalid download directory");
+      }
 
       var bookDetails = await bookDetailsRepository.getBookDetails(
         item.book,
@@ -471,13 +481,24 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
         }
       }
 
-      final path = await bookDetailsRepository.downloadBook(
-        bookDetails,
-        dir,
-        settings.downloadSchema,
-        format: formatToDownload,
-        progressCallback: (bytes) {},
-      );
+      final String path;
+      if (Platform.isAndroid) {
+        path = await bookDetailsRepository.downloadBook(
+          bookDetails,
+          dir!,
+          settings.downloadSchema,
+          format: formatToDownload,
+          progressCallback: (bytes) {},
+        );
+      } else {
+        // iOS (and other non-SAF platforms): save into the app's Documents
+        // directory, honoring the configured download schema.
+        path = await _downloadBookToAppDocuments(
+          bookDetails,
+          settings.downloadSchema,
+          formatToDownload,
+        );
+      }
 
       await downloadManager.registerDownload(item.book.uuid, path);
 
@@ -531,5 +552,73 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
       _isProcessing = false;
       add(ProcessNextSyncItem());
     }
+  }
+
+  /// Downloads a book into the app's Documents directory (used on iOS, where
+  /// there is no SAF directory picker), mirroring the folder layout that the
+  /// Android SAF download path produces for the given [schema].
+  Future<String> _downloadBookToAppDocuments(
+    BookDetailsModel book,
+    DownloadSchema schema,
+    String format,
+  ) async {
+    // Same sanitization rules as the Android download path.
+    final safeTitle =
+        book.title.replaceAll(RegExp(r'[\\/:*?"<>|.]'), '').trim();
+    final safeAuthor = book.authors.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+    final safeAuthorSort =
+        book.authorSort.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+    final safeSeries =
+        book.series.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
+
+    final segments = <String>[];
+    switch (schema) {
+      case DownloadSchema.flat:
+        break;
+      case DownloadSchema.authorOnly:
+        segments.add(safeAuthor);
+        break;
+      case DownloadSchema.authorBook:
+        segments.addAll([safeAuthor, safeTitle]);
+        break;
+      case DownloadSchema.authorSeriesBook:
+        segments.add(safeAuthor);
+        if (safeSeries.isNotEmpty) segments.add(safeSeries);
+        segments.add(safeTitle);
+        break;
+      case DownloadSchema.authorSortOnly:
+        segments.add(safeAuthorSort);
+        break;
+      case DownloadSchema.authorSortBook:
+        segments.addAll([safeAuthorSort, safeTitle]);
+        break;
+      case DownloadSchema.authorSortSeriesBook:
+        segments.add(safeAuthorSort);
+        if (safeSeries.isNotEmpty) segments.add(safeSeries);
+        segments.add(safeTitle);
+        break;
+    }
+    segments.removeWhere((s) => s.isEmpty);
+
+    final baseDir = await getApplicationDocumentsDirectory();
+    final targetDir = Directory(p.joinAll([baseDir.path, ...segments]));
+    await targetDir.create(recursive: true);
+
+    final fileName = '${safeTitle.isEmpty ? 'book' : safeTitle}.$format';
+    final file = File(p.join(targetDir.path, fileName));
+
+    if (await file.exists()) {
+      logger.w('File already exists: ${file.path}');
+      return file.path;
+    }
+
+    final bytes = await bookDetailsRepository.streamBookBytes(
+      book,
+      format: format,
+    );
+    await file.writeAsBytes(bytes, flush: true);
+
+    logger.i('Saved synced book to ${file.path}');
+    return file.path;
   }
 }

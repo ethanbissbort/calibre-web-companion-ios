@@ -357,6 +357,7 @@
     "webViewHelp2": "",
     "loadingBooks": "",
     "downloadFolder": "",
+    "downloadsSavedToAppDocuments": "图书将保存到本应用的文件夹中，可在“文件”应用中查看（我的 iPhone > Calibre Web Companion）。",
     "sslCertificate": "",
     "selected": "",
     "folderSelectedSuccessfully": "",
