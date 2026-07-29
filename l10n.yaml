@@ -1,0 +1,10 @@
+# Flutter only reads a file named exactly `l10n.yaml`. This was previously
+# named `l10n.yml`, so none of it applied and generation fell back to defaults.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+# Generate into lib/l10n so the code can import
+# `package:calibre_web_companion/l10n/app_localizations.dart`. The old
+# `synthetic-package: true` would have put the output in .dart_tool instead,
+# breaking every one of those imports had the file ever been read.
+synthetic-package: false
