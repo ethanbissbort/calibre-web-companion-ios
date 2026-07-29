@@ -20,6 +20,7 @@
     "updated": "Uuendatud",
     "publisher": "Kirjastus",
     "language": "Keel",
+    "systemLanguage": "Süsteemi keel",
     "size": "Suurus",
     "description": "Kirjeldus",
     "english": "inglise keel",
@@ -473,5 +474,6 @@
     "downloadingBook": "",
     "archivedBookFailed": "",
     "bookDetailsAllSectionsDisabledDescription": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Serveriga ei saa ühendust. Kontrolli oma ühendust või serveri URL-i."
 }

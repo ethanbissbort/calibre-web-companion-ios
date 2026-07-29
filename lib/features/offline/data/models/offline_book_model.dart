@@ -54,16 +54,17 @@ class OfflineBookModel {
     );
   }
 
-  OfflineBookModel copyWith({String? coverPath}) => OfflineBookModel(
-    uuid: uuid,
-    id: id,
-    title: title,
-    authors: authors,
-    series: series,
-    seriesIndex: seriesIndex,
-    filePath: filePath,
-    format: format,
-    savedAt: savedAt,
-    coverPath: coverPath ?? this.coverPath,
-  );
+  OfflineBookModel copyWith({String? filePath, String? coverPath}) =>
+      OfflineBookModel(
+        uuid: uuid,
+        id: id,
+        title: title,
+        authors: authors,
+        series: series,
+        seriesIndex: seriesIndex,
+        filePath: filePath ?? this.filePath,
+        format: format,
+        savedAt: savedAt,
+        coverPath: coverPath ?? this.coverPath,
+      );
 }

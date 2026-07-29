@@ -48,7 +48,7 @@ void main() {
         }
         rethrow;
       }
-    });
+    }, skip: skipWithoutCredentials);
   }
 
   for (final type in const [
@@ -67,7 +67,7 @@ void main() {
 
       expect(feed, isNotNull);
       expect(feed.categories, isA<List>());
-    });
+    }, skip: skipWithoutCredentials);
   }
 
   test('loadCategories(libraries) hits /libraries', () async {
@@ -79,7 +79,7 @@ void main() {
     } catch (e) {
       expect(e, isA<Exception>());
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('loadBooksFromPath() loads books from an explicit OPDS path', () async {
     await setUpDataSource();
@@ -88,7 +88,7 @@ void main() {
 
     expect(feed, isNotNull);
     expect(feed.books, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 
   test('loadCategoriesgeneric() parses a category path', () async {
     await setUpDataSource();
@@ -97,5 +97,5 @@ void main() {
 
     expect(feed, isNotNull);
     expect(feed.categories, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 }

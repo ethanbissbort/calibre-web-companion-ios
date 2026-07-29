@@ -61,6 +61,7 @@
     "updated": "Aktualisiert",
     "publisher": "Verlag",
     "language": "Sprache",
+    "systemLanguage": "Systemsprache",
     "fileInfo": "Dateiinformationen",
     "size": "Größe",
     "description": "Beschreibung",
@@ -523,5 +524,6 @@
     "inMagicShelves": "In Magic Shelves",
     "magicRulesLoadFailed": "Aktuelle Regeln konnten nicht geladen werden (Server-Timeout). Du kannst sie neu erstellen und speichern.",
     "tapToChangeIcon": "Zum Ändern tippen",
-    "change": "Ändern"
+    "change": "Ändern",
+    "networkErrorGeneric": "Server nicht erreichbar. Überprüfe deine Verbindung oder die Server-URL."
 }

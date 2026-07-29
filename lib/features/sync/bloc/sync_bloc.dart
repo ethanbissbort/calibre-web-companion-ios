@@ -4,9 +4,8 @@ import 'package:docman/docman.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:logger/logger.dart';
 import 'package:get_it/get_it.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import 'package:calibre_web_companion/core/exceptions/cancellation_exception.dart';
 import 'package:calibre_web_companion/features/sync/bloc/sync_event.dart';
 import 'package:calibre_web_companion/features/sync/bloc/sync_state.dart';
 import 'package:calibre_web_companion/features/sync/data/models/sync_filter.dart';
@@ -17,8 +16,6 @@ import 'package:calibre_web_companion/features/settings/data/repositories/settin
 import 'package:calibre_web_companion/features/offline/data/models/offline_book_model.dart';
 import 'package:calibre_web_companion/features/offline/data/repositories/offline_library_repository.dart';
 import 'package:calibre_web_companion/features/book_view/data/models/book_view_model.dart';
-import 'package:calibre_web_companion/features/book_details/data/models/book_details_model.dart';
-import 'package:calibre_web_companion/features/settings/data/models/download_schema.dart';
 import 'package:calibre_web_companion/features/shelf_details/data/repositories/shelf_details_repository.dart';
 import 'package:calibre_web_companion/core/services/api_service.dart';
 
@@ -31,6 +28,10 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
   final ShelfDetailsRepository shelfDetailsRepository;
 
   bool _isProcessing = false;
+
+  /// Token of the book download currently in flight, so cancelling the sync
+  /// actually aborts the transfer instead of only clearing the queue.
+  DownloadCancellationToken? _activeDownloadToken;
 
   SyncBloc({
     required this.logger,
@@ -389,7 +390,16 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
   }
 
   Future<void> _onCancelSync(CancelSync event, Emitter<SyncState> emit) async {
+    // Abort the book currently being downloaded. Without this the transfer ran
+    // to completion in the background even though the queue was gone.
+    _activeDownloadToken?.cancel('Sync cancelled');
     emit(state.copyWith(status: SyncStatus.canceled, queue: []));
+  }
+
+  @override
+  Future<void> close() {
+    _activeDownloadToken?.cancel('Sync closed');
+    return super.close();
   }
 
   Future<void> _onProcessNextSyncItem(
@@ -481,23 +491,46 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
         }
       }
 
+      final cancelToken = DownloadCancellationToken();
+      _activeDownloadToken = cancelToken;
+
+      // Real per-book progress: the callback gets the percentage of the book
+      // that has arrived, throttled so a chunky download does not rebuild the
+      // settings page hundreds of times per second.
+      final throttle = DownloadProgressThrottle();
+      void reportProgress(int percent) {
+        if (emit.isDone) return;
+        if (!throttle.shouldEmit(percent)) return;
+        emit(state.copyWith(currentProgress: percent / 100));
+      }
+
       final String path;
-      if (Platform.isAndroid) {
-        path = await bookDetailsRepository.downloadBook(
-          bookDetails,
-          dir!,
-          settings.downloadSchema,
-          format: formatToDownload,
-          progressCallback: (bytes) {},
-        );
-      } else {
-        // iOS (and other non-SAF platforms): save into the app's Documents
-        // directory, honoring the configured download schema.
-        path = await _downloadBookToAppDocuments(
-          bookDetails,
-          settings.downloadSchema,
-          formatToDownload,
-        );
+      try {
+        if (Platform.isAndroid) {
+          path = await bookDetailsRepository.downloadBook(
+            bookDetails,
+            dir!,
+            settings.downloadSchema,
+            format: formatToDownload,
+            progressCallback: reportProgress,
+            cancelToken: cancelToken,
+          );
+        } else {
+          // iOS (and other non-SAF platforms): save into the app's Documents
+          // directory, honoring the configured download schema. Same streaming,
+          // validation and .part handling as every other download path.
+          path = await bookDetailsRepository.downloadBookToDevice(
+            bookDetails,
+            format: formatToDownload,
+            schema: settings.downloadSchema,
+            progressCallback: reportProgress,
+            cancelToken: cancelToken,
+          );
+        }
+      } finally {
+        if (identical(_activeDownloadToken, cancelToken)) {
+          _activeDownloadToken = null;
+        }
       }
 
       await downloadManager.registerDownload(item.book.uuid, path);
@@ -525,100 +558,50 @@ class SyncBloc extends Bloc<SyncEvent, SyncState> {
         logger.w('Could not cache offline metadata (sync): $e');
       }
 
-      newQueue = List.from(state.queue);
-      newQueue[index] = item.copyWith(status: 'done');
-      emit(
-        state.copyWith(
-          queue: newQueue,
-          syncedCount: state.syncedCount + 1,
-          currentProgress: 1.0,
-        ),
-      );
+      if (_queueSlotStillOurs(index, item)) {
+        newQueue = List.from(state.queue);
+        newQueue[index] = item.copyWith(status: 'done');
+        emit(
+          state.copyWith(
+            queue: newQueue,
+            syncedCount: state.syncedCount + 1,
+            currentProgress: 1.0,
+          ),
+        );
+      }
     } catch (e) {
       final msg = e.toString();
+      final isCancelled = e is CancellationException;
       final isSkip = msg.contains("Skipped:");
 
-      if (isSkip) {
+      if (isCancelled) {
+        logger.i('Sync cancelled while downloading "${item.book.title}"');
+      } else if (isSkip) {
         logger.d(msg);
       } else {
         logger.e("Sync error for ${item.book.title}: $e");
       }
 
-      newQueue = List.from(state.queue);
-
-      newQueue[index] = item.copyWith(status: 'error');
-      emit(state.copyWith(queue: newQueue));
+      // Cancelling clears the queue, and a restarted sync replaces it, so the
+      // slot we started on may no longer exist or may belong to another book.
+      if (_queueSlotStillOurs(index, item)) {
+        newQueue = List.from(state.queue);
+        newQueue[index] = item.copyWith(
+          status: isCancelled ? 'canceled' : 'error',
+        );
+        emit(state.copyWith(queue: newQueue));
+      }
     } finally {
       _isProcessing = false;
       add(ProcessNextSyncItem());
     }
   }
 
-  /// Downloads a book into the app's Documents directory (used on iOS, where
-  /// there is no SAF directory picker), mirroring the folder layout that the
-  /// Android SAF download path produces for the given [schema].
-  Future<String> _downloadBookToAppDocuments(
-    BookDetailsModel book,
-    DownloadSchema schema,
-    String format,
-  ) async {
-    // Same sanitization rules as the Android download path.
-    final safeTitle =
-        book.title.replaceAll(RegExp(r'[\\/:*?"<>|.]'), '').trim();
-    final safeAuthor = book.authors.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
-    final safeAuthorSort =
-        book.authorSort.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
-    final safeSeries =
-        book.series.replaceAll(RegExp(r'[\\/:*?"<>|]'), '').trim();
-
-    final segments = <String>[];
-    switch (schema) {
-      case DownloadSchema.flat:
-        break;
-      case DownloadSchema.authorOnly:
-        segments.add(safeAuthor);
-        break;
-      case DownloadSchema.authorBook:
-        segments.addAll([safeAuthor, safeTitle]);
-        break;
-      case DownloadSchema.authorSeriesBook:
-        segments.add(safeAuthor);
-        if (safeSeries.isNotEmpty) segments.add(safeSeries);
-        segments.add(safeTitle);
-        break;
-      case DownloadSchema.authorSortOnly:
-        segments.add(safeAuthorSort);
-        break;
-      case DownloadSchema.authorSortBook:
-        segments.addAll([safeAuthorSort, safeTitle]);
-        break;
-      case DownloadSchema.authorSortSeriesBook:
-        segments.add(safeAuthorSort);
-        if (safeSeries.isNotEmpty) segments.add(safeSeries);
-        segments.add(safeTitle);
-        break;
-    }
-    segments.removeWhere((s) => s.isEmpty);
-
-    final baseDir = await getApplicationDocumentsDirectory();
-    final targetDir = Directory(p.joinAll([baseDir.path, ...segments]));
-    await targetDir.create(recursive: true);
-
-    final fileName = '${safeTitle.isEmpty ? 'book' : safeTitle}.$format';
-    final file = File(p.join(targetDir.path, fileName));
-
-    if (await file.exists()) {
-      logger.w('File already exists: ${file.path}');
-      return file.path;
-    }
-
-    final bytes = await bookDetailsRepository.streamBookBytes(
-      book,
-      format: format,
-    );
-    await file.writeAsBytes(bytes, flush: true);
-
-    logger.i('Saved synced book to ${file.path}');
-    return file.path;
+  /// Whether the queue slot we started downloading into is still the same book.
+  bool _queueSlotStillOurs(int index, SyncQueueItem item) {
+    final queue = state.queue;
+    return index >= 0 &&
+        index < queue.length &&
+        queue[index].book.uuid == item.book.uuid;
   }
 }

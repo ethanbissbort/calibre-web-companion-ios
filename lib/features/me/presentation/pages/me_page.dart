@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:calibre_web_companion/features/offline/cubit/connectivity_cubit.dart';
 import 'package:calibre_web_companion/features/me/bloc/me_bloc.dart';
 import 'package:calibre_web_companion/features/me/bloc/me_event.dart';
 import 'package:calibre_web_companion/features/me/bloc/me_state.dart';
@@ -63,6 +64,7 @@ class MePage extends StatelessWidget {
                 "${localizations.error}: ${state.errorMessage}",
                 isError: true,
               );
+              context.read<ConnectivityCubit>().reportFailure();
             }
 
             if (state.logoutStatus == LogoutStatus.success) {

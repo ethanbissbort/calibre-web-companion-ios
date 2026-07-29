@@ -56,6 +56,7 @@
     "updated": "حُدث",
     "publisher": "الناشر",
     "language": "اللغة",
+    "systemLanguage": "لغة النظام",
     "fileInfo": "معلومات الملف",
     "size": "الحجم",
     "description": "الوصف",
@@ -489,5 +490,6 @@
     "searchFailed": "فشل البحث",
     "cover": "الغلاف",
     "coverImage": "صورة الغلاف",
-    "searchForMetadata": "البحث للعثور على البيانات الوصفية"
+    "searchForMetadata": "البحث للعثور على البيانات الوصفية",
+    "networkErrorGeneric": "تعذّر الوصول إلى الخادم. تحقق من اتصالك أو من عنوان الخادم."
 }

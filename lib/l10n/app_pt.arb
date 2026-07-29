@@ -57,6 +57,7 @@
     "updated": "Atualizado",
     "publisher": "Editora",
     "language": "Idioma",
+    "systemLanguage": "Idioma do sistema",
     "fileInfo": "Informações do arquivo",
     "size": "Tamanho",
     "description": "Descrição",
@@ -474,5 +475,6 @@
     "showSendToEReaderButton": "",
     "deleteAccount": "",
     "bookDetailsAllSectionsDisabledDescription": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Não foi possível conectar ao servidor. Verifique sua conexão ou o URL do servidor."
 }

@@ -19,7 +19,10 @@ class SettingsModel extends Equatable {
   final String send2ereaderUrl;
   final String defaultDownloadPath;
   final DownloadSchema downloadSchema;
-  final String languageCode;
+
+  /// The language the user explicitly picked, or `null` when no choice has
+  /// been stored and the app should follow the system language.
+  final String? languageCode;
   final bool showReadNowButton;
   final bool showSendToEReaderButton;
   final bool storeReadNowAndSendToEReaderOnDevice;
@@ -52,7 +55,7 @@ class SettingsModel extends Equatable {
     required this.send2ereaderUrl,
     required this.defaultDownloadPath,
     required this.downloadSchema,
-    required this.languageCode,
+    this.languageCode,
     required this.showReadNowButton,
     required this.showSendToEReaderButton,
     required this.storeReadNowAndSendToEReaderOnDevice,
@@ -87,7 +90,7 @@ class SettingsModel extends Equatable {
       send2ereaderUrl: json['send2ereader_url'] ?? 'https://send.djazz.se',
       defaultDownloadPath: json['default_download_path'] ?? '',
       downloadSchema: DownloadSchema.values[json['download_schema'] ?? 0],
-      languageCode: json['language_code'] ?? 'en',
+      languageCode: json['language_code'] as String?,
       showReadNowButton: json['show_read_now_button'] ?? false,
       showSendToEReaderButton: json['show_send_to_ereader_button'] ?? true,
       storeReadNowAndSendToEReaderOnDevice:

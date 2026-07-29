@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,9 +13,57 @@ import 'package:http/io_client.dart';
 import 'package:calibre_web_companion/core/exceptions/redirect_exception.dart';
 import 'package:calibre_web_companion/core/services/connection_diagnostics.dart';
 import 'package:calibre_web_companion/core/services/digest_auth.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/book_view/data/datasources/book_view_remote_datasource.dart';
 
 enum AuthMethod { none, cookie, basic, auto }
+
+/// How long to wait for a TCP connection to be established before giving up.
+const Duration kConnectionTimeout = Duration(seconds: 15);
+
+/// How long a single request may take end to end before it is aborted.
+///
+/// Without this a black-holed connection (server behind a firewall that drops
+/// packets instead of rejecting them) leaves the request — and the spinner the
+/// user is looking at — pending forever.
+const Duration kRequestTimeout = Duration(seconds: 45);
+
+/// How long a response body may stall between chunks before it is abandoned.
+///
+/// This is an *idle* timeout, not a total one, so a slow but progressing
+/// multi-hundred-megabyte download is never cut short.
+const Duration kResponseIdleTimeout = Duration(seconds: 60);
+
+/// Bounds every request made through the wrapped client.
+///
+/// `http`'s convenience methods (`get`, `post`, …) all funnel through [send],
+/// so wrapping [send] covers every request without having to remember a
+/// `.timeout()` at each of the dozens of call sites.
+class _TimeoutClient extends http.BaseClient {
+  _TimeoutClient(this._inner);
+
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request).timeout(kRequestTimeout);
+
+    // Headers arrived in time; now guard against a body that stops mid-stream.
+    return http.StreamedResponse(
+      response.stream.timeout(kResponseIdleTimeout),
+      response.statusCode,
+      contentLength: response.contentLength,
+      request: response.request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
+  }
+
+  @override
+  void close() => _inner.close();
+}
 
 class ApiService {
   final Logger _logger = Logger();
@@ -35,6 +84,12 @@ class ApiService {
   factory ApiService() => _instance;
 
   ApiService._internal();
+
+  /// Credentials live in the platform keychain/keystore, not in the plaintext
+  /// preferences file. `ApiService` is a plain singleton rather than a
+  /// DI-constructed object, so it reaches the store through the locator the
+  /// same way the rest of the app does.
+  SecureCredentialStore get _secrets => GetIt.instance<SecureCredentialStore>();
 
   /// Returns the base URL with base path if available
   String getBaseUrl() {
@@ -79,19 +134,19 @@ class ApiService {
     _baseUrl = prefs.getString('base_url');
 
     final storedCookie =
-        prefs.getString('calibre_web_cookie') ??
-        prefs.getString('calibre_web_session');
+        _secrets.read('calibre_web_cookie') ??
+        _secrets.read('calibre_web_session');
 
     if (storedCookie != null) {
       final normalized = buildCookieHeaderFromSetCookie(storedCookie);
       _cookie = normalized.isEmpty ? storedCookie : normalized;
-      await prefs.setString('calibre_web_cookie', _cookie!);
+      await _secrets.write('calibre_web_cookie', _cookie!);
     } else {
       _cookie = null;
     }
 
     _username = prefs.getString('username');
-    _password = prefs.getString('password');
+    _password = _secrets.read('password');
     _basePath = prefs.getString('base_path') ?? '';
     _userAgent = prefs.getString('user_agent'); // User Agent laden
     _allowSelfSigned = prefs.getBool('allow_self_signed') ?? false;
@@ -99,12 +154,13 @@ class ApiService {
     _digest.reset();
 
     _httpClient = HttpClient();
+    _httpClient!.connectionTimeout = kConnectionTimeout;
     if (_allowSelfSigned) {
       _logger.w('Allowing self-signed certificates.');
       _httpClient!.badCertificateCallback = (cert, host, port) => true;
     }
     _client?.close();
-    _client = IOClient(_httpClient!);
+    _client = _TimeoutClient(IOClient(_httpClient!));
   }
 
   void dispose() {
@@ -114,10 +170,11 @@ class ApiService {
 
   http.Client _createClient() {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = kConnectionTimeout;
     if (_allowSelfSigned) {
       httpClient.badCertificateCallback = (cert, host, port) => true;
     }
-    return IOClient(httpClient);
+    return _TimeoutClient(IOClient(httpClient));
   }
 
   Future<void> reset() async {
@@ -314,8 +371,7 @@ class ApiService {
           !response.body.contains('flash_danger');
       final setCookie = response.headers['set-cookie'];
       if (ok && setCookie != null && setCookie.isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('calibre_web_session', setCookie);
+        await _secrets.write('calibre_web_session', setCookie);
         await initialize();
         _logger.i('Re-authentication successful');
         return true;
@@ -379,7 +435,14 @@ class ApiService {
     } catch (e) {
       _logger.e('Failed to parse JSON response: $e');
 
-      _logger.d('Response body: ${response.body}...');
+      // Never dump the raw body: on an unexpected redirect to the login page
+      // it contains CSRF tokens and session markers, and the log buffer is
+      // user-exportable from the in-app log viewer.
+      _logger.d(
+        'Response body omitted from log '
+        '(${response.body.length} bytes, content-type: '
+        '${response.headers['content-type'] ?? 'unknown'})',
+      );
       throw FormatException('Invalid JSON response: $e');
     }
   }
@@ -455,13 +518,12 @@ class ApiService {
         _logger.d('GET $uri -> ${response.statusCode}');
 
         if (response.headers.containsKey('set-cookie')) {
-          final prefs = await SharedPreferences.getInstance();
           final newCookie = buildCookieHeaderFromSetCookie(
             response.headers['set-cookie'],
           );
           final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
           if (merged.trim().isNotEmpty) {
-            await prefs.setString('calibre_web_cookie', merged);
+            await _secrets.write('calibre_web_cookie', merged);
             _cookie = merged;
           }
         }
@@ -745,13 +807,12 @@ class ApiService {
           _logger.i('Multipart POST response status: ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -813,13 +874,12 @@ class ApiService {
           );
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -860,13 +920,12 @@ class ApiService {
           _logger.d('Multipart POST $uri -> ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -923,13 +982,12 @@ class ApiService {
           _logger.d('POST $uri -> ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -1030,7 +1088,7 @@ class ApiService {
         'CSRF token not found in the response using selector: $selector',
       );
     } else {
-      _logger.d('CSRF token found: $csrfToken');
+      _logger.d('CSRF token found (${csrfToken.length} chars)');
     }
 
     return {'token': csrfToken, 'cookies': response.headers['set-cookie']};
@@ -1173,8 +1231,7 @@ class ApiService {
 
   /// Process custom headers, replacing placeholders with actual values
   Future<Map<String, String>> _processCustomHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final headersJson = prefs.getString('custom_login_headers') ?? '[]';
+    final headersJson = _secrets.read('custom_login_headers') ?? '[]';
 
     final List<dynamic> decodedList = jsonDecode(headersJson);
     final List<Map<String, String>> customHeaders =

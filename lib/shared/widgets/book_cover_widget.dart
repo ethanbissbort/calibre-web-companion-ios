@@ -8,6 +8,7 @@ import 'package:calibre_web_companion/shared/widgets/app_skeletonizer.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
 import 'package:calibre_web_companion/core/services/image_cache_manager.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 
 class BookCoverWidget extends StatelessWidget {
   final int bookId;
@@ -52,7 +53,7 @@ class BookCoverWidget extends StatelessWidget {
       imageUrl = '$baseUrl/opds/cover/$bookId';
     }
 
-    final headers = _getHeaders(apiService, prefs);
+    final headers = _getHeaders(apiService);
 
     return CachedNetworkImage(
       cacheManager: CustomCacheManager(),
@@ -68,7 +69,7 @@ class BookCoverWidget extends StatelessWidget {
     );
   }
 
-  Map<String, String> _getHeaders(ApiService api, SharedPreferences prefs) {
+  Map<String, String> _getHeaders(ApiService api) {
     final headers = <String, String>{};
 
     final authHeaders = api.getAuthHeaders(authMethod: AuthMethod.auto);
@@ -89,7 +90,11 @@ class BookCoverWidget extends StatelessWidget {
     }
 
     try {
-      final headersJson = prefs.getString('custom_login_headers') ?? '[]';
+      final headersJson =
+          GetIt.instance<SecureCredentialStore>().read(
+            'custom_login_headers',
+          ) ??
+          '[]';
       final List<dynamic> decodedList = jsonDecode(headersJson);
 
       for (final dynamic item in decodedList) {

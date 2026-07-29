@@ -13,23 +13,25 @@ void main() {
     final dataSource = MeRemoteDataSource(
       apiService: api,
       preferences: testPrefs(),
+      secureCredentials: testSecureCredentials(),
     );
 
     final stats = await dataSource.getStats();
 
     expect(stats, isNotNull);
     expect(stats.books, greaterThanOrEqualTo(0));
-  });
+  }, skip: skipWithoutCredentials);
 
   test('getIsOpds() is false for a Calibre-Web server', () async {
     final api = await setupIntegrationTest();
     final dataSource = MeRemoteDataSource(
       apiService: api,
       preferences: testPrefs(),
+      secureCredentials: testSecureCredentials(),
     );
 
     expect(dataSource.getIsOpds(), isFalse);
-  });
+  }, skip: skipWithoutCredentials);
 
   test(
     'logOut() — GET /logout',

@@ -7,11 +7,12 @@ import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/download_service/data/datasources/download_service_remote_datasource.dart';
 import 'package:calibre_web_companion/features/login_settings/data/datasources/login_settings_local_datasource.dart';
 import 'package:calibre_web_companion/features/login_settings/data/repositories/login_settings_repository.dart';
 
-import '../../test_env.dart';
+import '../../helpers/integration_env.dart';
 
 void main() {
   late DownloadServiceRemoteDataSource dataSource;
@@ -24,12 +25,15 @@ void main() {
     });
     final prefs = await SharedPreferences.getInstance();
     final logger = Logger(level: Level.off);
+    final secureCredentials = SecureCredentialStore(logger: logger);
+    await secureCredentials.init(prefs);
 
     final loginSettingsRepository = LoginSettingsRepository(
       loginSettingsLocalDataSource: LoginSettingsLocalDataSource(
         preferences: prefs,
         logger: logger,
         apiService: ApiService(),
+        secureCredentials: secureCredentials,
       ),
       logger: logger,
     );
@@ -39,6 +43,7 @@ void main() {
       sharedPreferences: prefs,
       logger: logger,
       loginSettingsRepository: loginSettingsRepository,
+      secureCredentials: secureCredentials,
     );
   }
 
@@ -51,7 +56,7 @@ void main() {
 
       expect(books, isA<List>());
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(
@@ -63,7 +68,7 @@ void main() {
 
       expect(books, isA<List>());
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(
@@ -75,7 +80,7 @@ void main() {
 
       expect(config, isNotNull);
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(

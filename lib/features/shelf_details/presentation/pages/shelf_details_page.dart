@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:calibre_web_companion/shared/widgets/app_skeletonizer.dart';
 
+import 'package:calibre_web_companion/features/offline/cubit/connectivity_cubit.dart';
 import 'package:calibre_web_companion/features/shelf_details/bloc/shelf_details_bloc.dart';
 import 'package:calibre_web_companion/features/shelf_details/bloc/shelf_details_event.dart';
 import 'package:calibre_web_companion/features/shelf_details/bloc/shelf_details_state.dart';
@@ -74,6 +75,7 @@ class ShelfDetailsPage extends StatelessWidget {
               "${localizations.errorLoadingData}: ${state.errorMessage}",
               isError: true,
             );
+            context.read<ConnectivityCubit>().reportFailure();
           }
         },
         builder: (context, state) {

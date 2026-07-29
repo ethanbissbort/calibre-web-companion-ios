@@ -56,6 +56,7 @@
     "updated": "Actualitzat",
     "publisher": "Editorial",
     "language": "Idioma",
+    "systemLanguage": "Idioma del sistema",
     "fileInfo": "Info fitxer",
     "size": "Mida",
     "description": "Descripció",
@@ -473,5 +474,6 @@
     "inMagicShelves": "A prestatgeries màgiques",
     "magicRulesLoadFailed": "No s'han pogut carregar les regles actuals (temps d'espera del servidor). Pots tornar-les a crear i desar.",
     "tapToChangeIcon": "Toca per canviar",
-    "change": "Canvia"
+    "change": "Canvia",
+    "networkErrorGeneric": "No es pot connectar amb el servidor. Comprova la connexió o l'URL del servidor."
 }

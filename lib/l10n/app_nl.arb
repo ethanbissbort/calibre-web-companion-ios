@@ -370,6 +370,7 @@
     "foundXItemsToSync": "",
     "vertical": "",
     "language": "",
+    "systemLanguage": "Systeemtaal",
     "serverUrlMissing": "",
     "switchAccountConfirmation": "",
     "bookCouldNotBeFound": "",
@@ -473,5 +474,6 @@
     "archivedBookFailed": "",
     "bookDetailsAllSectionsDisabledDescription": "",
     "failed": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Kan de server niet bereiken. Controleer je verbinding of de server-URL."
 }

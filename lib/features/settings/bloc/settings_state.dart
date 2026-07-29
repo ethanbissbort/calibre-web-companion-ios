@@ -5,6 +5,10 @@ import 'package:calibre_web_companion/features/settings/data/models/download_sch
 import 'package:calibre_web_companion/features/settings/data/models/predefined_colors.dart';
 import 'package:calibre_web_companion/features/settings/data/models/theme_source.dart';
 
+/// Sentinel for [SettingsState.copyWith] so nullable fields can tell
+/// "argument omitted" apart from "explicitly set to null".
+const Object _unchanged = Object();
+
 enum SettingsStatus { initial, loading, loaded, error }
 
 enum SettingsFeedbackStatus { initial, loading, success, error }
@@ -28,6 +32,9 @@ class SettingsState extends Equatable {
   final String? errorMessage;
   final String? appVersion;
   final String? buildNumber;
+
+  /// The language the user explicitly picked, or `null` to follow the
+  /// system language (the default).
   final String? languageCode;
   final bool showReadNowButton;
   final bool showSendToEReaderButton;
@@ -70,7 +77,7 @@ class SettingsState extends Equatable {
     this.errorMessage,
     this.appVersion,
     this.buildNumber,
-    this.languageCode = 'en',
+    this.languageCode,
     this.showReadNowButton = false,
     this.showSendToEReaderButton = true,
     this.storeReadNowAndSendToEReaderOnDevice = false,
@@ -115,7 +122,9 @@ class SettingsState extends Equatable {
     String? errorMessage,
     String? appVersion,
     String? buildNumber,
-    String? languageCode,
+    // Accepts a `String?`; omit it to keep the current value, pass `null`
+    // explicitly to go back to following the system language.
+    Object? languageCode = _unchanged,
     bool? showReadNowButton,
     bool? showSendToEReaderButton,
     bool? storeReadNowAndSendToEReaderOnDevice,
@@ -157,7 +166,10 @@ class SettingsState extends Equatable {
       errorMessage: errorMessage,
       appVersion: appVersion ?? this.appVersion,
       buildNumber: buildNumber ?? this.buildNumber,
-      languageCode: languageCode ?? this.languageCode,
+      languageCode:
+          identical(languageCode, _unchanged)
+              ? this.languageCode
+              : languageCode as String?,
       showReadNowButton: showReadNowButton ?? this.showReadNowButton,
       showSendToEReaderButton:
           showSendToEReaderButton ?? this.showSendToEReaderButton,

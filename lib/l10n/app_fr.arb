@@ -57,6 +57,7 @@
     "updated": "Mis à jour",
     "publisher": "Éditeur",
     "language": "Langue",
+    "systemLanguage": "Langue du système",
     "fileInfo": "Informations sur le fichier",
     "size": "Taille",
     "description": "Description",
@@ -490,5 +491,6 @@
     "searchFailed": "Échec de la recherche",
     "cover": "Couverture",
     "coverImage": "Image de couverture",
-    "searchForMetadata": "Rechercher des métadonnées"
+    "searchForMetadata": "Rechercher des métadonnées",
+    "networkErrorGeneric": "Impossible de joindre votre serveur. Vérifiez votre connexion ou l'URL du serveur."
 }

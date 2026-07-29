@@ -56,6 +56,7 @@
     "updated": "Uppdaterad",
     "publisher": "Förlag",
     "language": "Språk",
+    "systemLanguage": "Systemspråk",
     "fileInfo": "Filinformation",
     "size": "Storlek",
     "description": "Beskrivning",
@@ -473,5 +474,6 @@
     "stopSync": "",
     "showSendToEReaderButton": "",
     "deleteAccount": "",
-    "bookDetailsAllSectionsDisabledDescription": ""
+    "bookDetailsAllSectionsDisabledDescription": "",
+    "networkErrorGeneric": "Kan inte nå servern. Kontrollera din anslutning eller serverns URL."
 }

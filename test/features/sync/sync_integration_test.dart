@@ -53,5 +53,5 @@ void main() {
         await detailsSource.deleteShelf(shelfId);
       }
     }
-  });
+  }, skip: skipWithoutCredentials);
 }

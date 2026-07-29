@@ -41,6 +41,7 @@ import 'package:cosmos_epub/cosmos_epub.dart';
 // Exposes cosmos_epub's `bookProgress` singleton for cross-device WebDAV sync.
 import 'package:cosmos_epub/show_epub.dart' as cosmos_reader;
 import 'package:calibre_web_companion/shared/widgets/app_dialog_button.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/webdav_sync_service.dart';
 
 class BookDetailsPage extends StatefulWidget {
@@ -185,7 +186,7 @@ class _BookDetailsPageState extends State<BookDetailsPage> {
       _webDavService.init(
         prefs.getString('webdav_url') ?? '',
         prefs.getString('webdav_username') ?? '',
-        prefs.getString('webdav_password') ?? '',
+        GetIt.instance<SecureCredentialStore>().read('webdav_password') ?? '',
         allowSelfSigned: prefs.getBool('allow_self_signed') ?? false,
       );
     }
@@ -260,7 +261,7 @@ class _BookDetailsPageState extends State<BookDetailsPage> {
       _webDavService.init(
         url,
         prefs.getString('webdav_username') ?? '',
-        prefs.getString('webdav_password') ?? '',
+        GetIt.instance<SecureCredentialStore>().read('webdav_password') ?? '',
         allowSelfSigned: prefs.getBool('allow_self_signed') ?? false,
       );
 
@@ -297,7 +298,7 @@ class _BookDetailsPageState extends State<BookDetailsPage> {
       _webDavService.init(
         url,
         prefs.getString('webdav_username') ?? '',
-        prefs.getString('webdav_password') ?? '',
+        GetIt.instance<SecureCredentialStore>().read('webdav_password') ?? '',
         allowSelfSigned: prefs.getBool('allow_self_signed') ?? false,
       );
 

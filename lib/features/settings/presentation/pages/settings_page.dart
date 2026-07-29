@@ -986,7 +986,16 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsState state,
     AppLocalizations localizations,
   ) {
+    // Sentinel for the dropdown only; it maps to a `null` language code,
+    // which means "follow the system language".
+    const systemLanguageValue = 'system';
+
     final availableLanguages = [
+      {
+        'code': systemLanguageValue,
+        'name': localizations.systemLanguage,
+        'flag': '🌐',
+      },
       {'code': 'en', 'name': 'English', 'flag': '🇬🇧'},
       {'code': 'de', 'name': 'Deutsch', 'flag': '🇩🇪'},
       {'code': 'fr', 'name': 'Français', 'flag': '🇫🇷'},
@@ -1045,7 +1054,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   vertical: 8,
                 ),
               ),
-              initialValue: state.languageCode,
+              initialValue: state.languageCode ?? systemLanguageValue,
               icon: const Icon(Icons.arrow_drop_down),
               elevation: 16,
               style: TextStyle(
@@ -1054,7 +1063,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               onChanged: (String? newValue) {
                 if (newValue != null) {
-                  context.read<SettingsBloc>().add(SetLanguage(newValue));
+                  context.read<SettingsBloc>().add(
+                    SetLanguage(
+                      newValue == systemLanguageValue ? null : newValue,
+                    ),
+                  );
                 }
               },
               items:

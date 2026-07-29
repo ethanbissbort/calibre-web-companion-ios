@@ -1,0 +1,13 @@
+# Configuration for the Dart/Flutter test runner.
+#
+# Declaring `integration` here is what makes `--tags integration` and
+# `--exclude-tags integration` first-class instead of emitting an "undeclared
+# tag" warning on every run.
+#
+# Tests carrying this tag talk to a REAL Calibre-Web server over the network, so
+# they need credentials (see test/test_env.example.dart) and they are excluded
+# from CI, which runs `flutter test --exclude-tags integration`.
+tags:
+  integration:
+    # Real network round-trips against a live server; be generous.
+    timeout: 2x

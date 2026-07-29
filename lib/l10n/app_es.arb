@@ -57,6 +57,7 @@
     "updated": "Actualizado",
     "publisher": "Editorial",
     "language": "Idioma",
+    "systemLanguage": "Idioma del sistema",
     "fileInfo": "Información del archivo",
     "size": "Tamaño",
     "description": "Descripción",
@@ -474,5 +475,6 @@
     "magicRulesLoadFailed": "No se pudieron cargar las reglas actuales (tiempo de espera del servidor). Puedes recrearlas y guardar.",
     "tapToChangeIcon": "Toca para cambiar",
     "change": "Cambiar",
-    "storeReadNowAndSendToEReaderOnDevice": "Tienda Send2EReader/Leer Ahora descargas en el dispositivo"
+    "storeReadNowAndSendToEReaderOnDevice": "Tienda Send2EReader/Leer Ahora descargas en el dispositivo",
+    "networkErrorGeneric": "No se puede conectar con el servidor. Comprueba tu conexión o la URL del servidor."
 }

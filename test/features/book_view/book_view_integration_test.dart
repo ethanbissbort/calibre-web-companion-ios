@@ -28,7 +28,7 @@ void main() {
     expect(books, isNotEmpty);
     expect(books.first.id, greaterThan(0));
     expect(books.first.title, isNotEmpty);
-  });
+  }, skip: skipWithoutCredentials);
 
   test('fetchBooks() respects the limit parameter', () async {
     await setUpDataSource();
@@ -36,7 +36,7 @@ void main() {
     final books = await dataSource.fetchBooks(offset: 0, limit: 3);
 
     expect(books.length, lessThanOrEqualTo(3));
-  });
+  }, skip: skipWithoutCredentials);
 
   test('fetchBooks() pagination via offset returns different pages', () async {
     await setUpDataSource();
@@ -47,7 +47,7 @@ void main() {
     if (firstPage.isNotEmpty && secondPage.isNotEmpty) {
       expect(firstPage.first.id, isNot(equals(secondPage.first.id)));
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('fetchBooks() with sort parameters does not error', () async {
     await setUpDataSource();
@@ -60,7 +60,7 @@ void main() {
     );
 
     expect(books, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 
   test('fetchBooks() with a search query returns matching books', () async {
     await setUpDataSource();
@@ -76,5 +76,5 @@ void main() {
     );
 
     expect(results, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 }

@@ -39,7 +39,7 @@ void main() {
 
     expect(shelves, isNotNull);
     expect(shelves.shelves, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 
   test(
     'shelf lifecycle: create -> add book -> remove book -> delete',
@@ -71,6 +71,7 @@ void main() {
         }
       }
     },
+    skip: skipWithoutCredentials,
   );
 
   test('findShelvesContainingBook() runs without error', () async {
@@ -82,5 +83,5 @@ void main() {
     );
 
     expect(shelves, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 }

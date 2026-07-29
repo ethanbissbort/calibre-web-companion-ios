@@ -49,6 +49,10 @@ de.doen1el.calibreWebCompanion.yml
 
 # Don't track generated localization files
 lib/l10n/app_localizations*.dart
+# Local integration-test credentials. Never committed; copy the committed
+# template test/test_env.example.dart here and fill it in. Nothing imports this
+# file (a clean clone must still compile), so export the values as CWC_TEST_*
+# environment variables - see test/test_env.example.dart for the full recipe.
 test/test_env.dart
 release_notes.md
 distribution/whatsnew/

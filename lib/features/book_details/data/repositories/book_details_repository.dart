@@ -4,6 +4,7 @@ import 'package:docman/docman.dart';
 import 'package:http/http.dart';
 import 'package:logger/logger.dart';
 
+import 'package:calibre_web_companion/core/services/download_manager.dart';
 import 'package:calibre_web_companion/features/book_details/data/datasources/book_details_remote_datasource.dart';
 import 'package:calibre_web_companion/features/book_details/data/models/book_details_model.dart';
 import 'package:calibre_web_companion/features/book_view/data/models/book_view_model.dart';
@@ -56,6 +57,7 @@ class BookDetailsRepository {
     DownloadSchema schema, {
     Function(int)? progressCallback,
     Future<void> Function(String path)? onFileDownloaded,
+    DownloadCancellationToken? cancelToken,
   }) async {
     try {
       return await datasource.openInReader(
@@ -64,6 +66,7 @@ class BookDetailsRepository {
         schema,
         progressCallback: progressCallback,
         onFileDownloaded: onFileDownloaded,
+        cancelToken: cancelToken,
       );
     } catch (e) {
       rethrow;
@@ -167,6 +170,7 @@ class BookDetailsRepository {
     DownloadSchema schema, {
     String format = 'epub',
     Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
   }) async {
     try {
       return await datasource.downloadBook(
@@ -175,6 +179,7 @@ class BookDetailsRepository {
         schema,
         format: format,
         progressCallback: progressCallback,
+        cancelToken: cancelToken,
       );
     } catch (e) {
       logger.e('Error downloading book: $e');
@@ -186,10 +191,12 @@ class BookDetailsRepository {
     BookDetailsModel book, {
     String format = 'epub',
     Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
   }) => datasource.streamBookBytes(
     book,
     format: format,
     progressCallback: progressCallback,
+    cancelToken: cancelToken,
   );
 
   Future<String> downloadBookToDevice(
@@ -197,11 +204,13 @@ class BookDetailsRepository {
     String format = 'epub',
     DownloadSchema schema = DownloadSchema.flat,
     Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
   }) => datasource.downloadBookToDevice(
     book,
     format: format,
     schema: schema,
     progressCallback: progressCallback,
+    cancelToken: cancelToken,
   );
 
   Future<Uint8List?> fetchCoverBytes(int bookId, String? coverUrl) =>

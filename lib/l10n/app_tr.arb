@@ -40,6 +40,7 @@
     "updated": "Güncellendi",
     "publisher": "Yayıncı",
     "language": "Dil",
+    "systemLanguage": "Sistem dili",
     "fileInfo": "Dosya bilgisi",
     "size": "Boyut",
     "description": "Tanım",
@@ -473,5 +474,6 @@
     "archivedBookFailed": "",
     "bookDetailsAllSectionsDisabledDescription": "",
     "failed": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Sunucuya ulaşılamıyor. Bağlantınızı veya sunucu adresini kontrol edin."
 }

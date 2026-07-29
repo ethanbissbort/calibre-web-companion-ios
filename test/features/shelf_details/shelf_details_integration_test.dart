@@ -49,7 +49,7 @@ void main() {
         await dataSource.deleteShelf(shelfId);
       }
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('editShelf() renames a shelf (POST /shelf/edit/{id})', () async {
     await setUpDataSources();
@@ -69,7 +69,7 @@ void main() {
         await dataSource.deleteShelf(shelfId);
       }
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('removeFromShelf() removes a book (POST /shelf/remove)', () async {
     await setUpDataSources();
@@ -94,7 +94,7 @@ void main() {
         await dataSource.deleteShelf(shelfId);
       }
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('deleteShelf() deletes a shelf (POST /shelf/delete/{id})', () async {
     await setUpDataSources();
@@ -104,5 +104,5 @@ void main() {
     final deleted = await dataSource.deleteShelf(shelfId);
 
     expect(deleted, isTrue);
-  });
+  }, skip: skipWithoutCredentials);
 }
