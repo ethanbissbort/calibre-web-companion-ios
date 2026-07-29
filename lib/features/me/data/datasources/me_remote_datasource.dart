@@ -75,14 +75,31 @@ class MeRemoteDataSource {
         }
       }
 
-      await preferences.remove('base_url');
-      await preferences.remove('username');
-      await preferences.remove('password');
-      await preferences.remove('calibre_web_session');
-      await preferences.remove('calibre_web_cookie');
-      await preferences.remove('server_type');
-      await preferences.remove('calibre_library_id');
-      await preferences.remove('calibre_library_map');
+      for (final key in const [
+        'base_url',
+        'username',
+        'password',
+        'calibre_web_session',
+        'calibre_web_cookie',
+        'server_type',
+        'calibre_library_id',
+        'calibre_library_map',
+        // Credentials for the auxiliary services are scoped to the server the
+        // user just signed out of, so they must not outlive the session.
+        // Previously they survived logout, leaving passwords on disk for
+        // anyone who later got hold of the device.
+        'webdav_password',
+        'downloader_password',
+        'downloader_cookie',
+      ]) {
+        await preferences.remove(key);
+      }
+
+      // Deliberately preserved: `saved_accounts` (the account switcher's
+      // history, which the user clears per-entry via removeAccount) and
+      // `custom_login_headers` (reverse-proxy/SSO headers needed to reach the
+      // server again at the next login). Both hold secrets and are moved to
+      // encrypted storage separately.
 
       await apiService.reset();
     } catch (e) {

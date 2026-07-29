@@ -25,7 +25,9 @@ class LoginSettingsLocalDataSource {
           preferences.getString(_customHeadersKey) ?? '[]';
       final List<dynamic> jsonList = json.decode(jsonString);
 
-      logger.i('Loaded headers: $jsonList');
+      // Header *values* are secrets (bearer tokens, CF-Access secrets), so log
+      // only how many were loaded — never the list itself.
+      logger.i('Loaded ${jsonList.length} custom header(s)');
       return CustomHeaderModel.fromJsonList(jsonList);
     } catch (e) {
       logger.e('Error loading headers: $e');

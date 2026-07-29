@@ -527,5 +527,6 @@
   "inMagicShelves": "In Magic Shelves",
   "magicRulesLoadFailed": "Couldn't load the current rules (server timed out). You can rebuild them and save.",
   "tapToChangeIcon": "Tap to change",
-  "change": "Change"
+  "change": "Change",
+  "networkErrorGeneric": "Can't reach your server. Check your connection or server URL."
 }

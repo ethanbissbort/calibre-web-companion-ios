@@ -473,5 +473,6 @@
     "change": "Cambia",
     "storeReadNowAndSendToEReaderOnDeviceDescription": "",
     "pleaseSetDefaultDownloadFolderFirst": "",
-    "storeReadNowAndSendToEReaderOnDevice": ""
+    "storeReadNowAndSendToEReaderOnDevice": "",
+    "networkErrorGeneric": "Impossibile raggiungere il server. Controlla la connessione o l'URL del server."
 }

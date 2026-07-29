@@ -474,5 +474,6 @@
     "showSendToEReaderButton": "",
     "deleteAccount": "",
     "bookDetailsAllSectionsDisabledDescription": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Não foi possível conectar ao servidor. Verifique sua conexão ou o URL do servidor."
 }

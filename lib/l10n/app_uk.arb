@@ -521,5 +521,6 @@
     "offline": "Не в мережі",
     "offlineBannerMessage": "Ви поза мережею. Відображаються завантажені книги",
     "diagHintStockCalibre": "Сервер відповідає, але кінцеві точки Calibre-Web (/ajax/listbooks, /opds/stats) повертають помилку 404. Виглядає наче вбудований сервер вмісту Calibre, а не Calibre-Web. Цей додаток потребує Calibre-Web або Calibre-Web-Automated, що розташований у тій же бібліотеці.",
-    "userFirstLetter": "U"
+    "userFirstLetter": "U",
+    "networkErrorGeneric": "Не вдалося підключитися до сервера. Перевірте з'єднання або URL-адресу сервера."
 }

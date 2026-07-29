@@ -495,5 +495,6 @@
     "uploadFromDeviceDescription": "Létező ekönyv fájl választása az eszközről",
     "addToCalibre": "Hozzáadás Calibre-hez",
     "addingToCalibre": "Hozzáadás Calibre-hez…",
-    "bookAddedToCalibre": "Könyv hozzáadva Calibre-hez"
+    "bookAddedToCalibre": "Könyv hozzáadva Calibre-hez",
+    "networkErrorGeneric": "A kiszolgáló nem érhető el. Ellenőrizd a kapcsolatot vagy a kiszolgáló URL-címét."
 }

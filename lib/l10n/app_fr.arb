@@ -490,5 +490,6 @@
     "searchFailed": "Échec de la recherche",
     "cover": "Couverture",
     "coverImage": "Image de couverture",
-    "searchForMetadata": "Rechercher des métadonnées"
+    "searchForMetadata": "Rechercher des métadonnées",
+    "networkErrorGeneric": "Impossible de joindre votre serveur. Vérifiez votre connexion ou l'URL du serveur."
 }

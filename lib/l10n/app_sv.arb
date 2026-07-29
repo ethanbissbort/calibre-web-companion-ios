@@ -473,5 +473,6 @@
     "stopSync": "",
     "showSendToEReaderButton": "",
     "deleteAccount": "",
-    "bookDetailsAllSectionsDisabledDescription": ""
+    "bookDetailsAllSectionsDisabledDescription": "",
+    "networkErrorGeneric": "Kan inte nå servern. Kontrollera din anslutning eller serverns URL."
 }

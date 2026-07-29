@@ -86,7 +86,7 @@ class DownloadServiceRemoteDataSource {
       if (rawCookie != null) {
         final cookieValue = rawCookie.split(';').first;
         await sharedPreferences.setString('downloader_cookie', cookieValue);
-        logger.i('Login successful, cookie stored: $cookieValue');
+        logger.i('Login successful, session cookie stored');
       } else {
         logger.w('Login successful but no Set-Cookie header found');
       }

@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  # Allows a release to be cut deliberately from the Actions tab instead of only
+  # as a side effect of opening a pull request.
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,7 +16,6 @@ jobs:
       # The secrets context is not allowed in step-level `if:` expressions,
       # so expose presence flags for forks that don't have these secrets.
       HAS_ANDROID_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
-      HAS_PLAY_SECRETS: ${{ secrets.SERVICE_ACCOUNT_JSON != '' }}
       HAS_RELEASE_TOKEN: ${{ secrets.TOKEN != '' }}
 
     steps:
@@ -45,8 +47,10 @@ jobs:
       - name: Generate Translation Files
         run: flutter gen-l10n
 
-      #5 Setup Keystore (skipped on forks without the signing secrets;
-      # the build then falls back to debug signing)
+      #5 Setup Keystore (skipped on forks without the signing secrets).
+      # Without these secrets the release build now FAILS instead of silently
+      # producing a debug-signed "release" artifact - see the signing guard in
+      # android/app/build.gradle.kts.
       - name: Decode Keystore
         if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         run: |
@@ -60,15 +64,34 @@ jobs:
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "storeFile=../keystore.jks" >> android/key.properties
 
+      #6.0 Decide how this run signs.
+      # With the keystore secrets we produce a real, publishable release. Without
+      # them (the default on a fork) we opt in EXPLICITLY to debug signing so the
+      # build still verifies and CI stays green - but the resulting artifacts are
+      # test-only and are never attached to a release draft. The opt-in must be
+      # explicit: android/app/build.gradle.kts refuses to sign a release with the
+      # debug key unless asked, precisely so this can never happen by accident.
+      - name: Select signing mode
+        run: |
+          if [ "$HAS_ANDROID_KEYSTORE" = "true" ]; then
+            echo "SIGNING_ARGS=" >> "$GITHUB_ENV"
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Building with the release keystore."
+          else
+            echo "SIGNING_ARGS=-PallowDebugSigning=true" >> "$GITHUB_ENV"
+            echo "RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No KEYSTORE_BASE64 secret. Building DEBUG-SIGNED Android artifacts for verification only; they will not be attached to any release."
+          fi
+
       #6.1 Build App Bundle (AAB)
       - name: Build App Bundle
-        run: flutter build appbundle --release --no-tree-shake-icons
+        run: flutter build appbundle --release --no-tree-shake-icons $SIGNING_ARGS
 
       #6.2 Building APK
       - name: Build APKs (Split per ABI)
-        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons $SIGNING_ARGS
 
-      #6.3 Version + previous tag (used by Play changelogs and release notes)
+      #6.3 Version + previous tag (used by the release notes)
       - name: Extract version and previous tag
         id: version
         run: |
@@ -81,32 +104,33 @@ jobs:
           echo "PREV_TAG=$prev_tag" >> "$GITHUB_ENV"
           echo "Version $version (code $code), previous tag: '${prev_tag:-none}'"
 
-      #6.4 Generate Play Store "What's New" from the Fastlane changelogs
-      - name: Generate Play Store changelogs
-        run: bash .github/scripts/generate_whatsnew.sh "$VERSION_CODE"
+      # NOTE: Do NOT add a Google Play upload step here.
+      #
+      # This repository is a fork. Upstream's Play listing
+      # (de.doen1el.calibreWebCompanion) belongs to doen1el, and this fork must
+      # never publish to, or otherwise interact with, upstream's infrastructure.
+      # The previous "Upload to Google Play" step targeted exactly that package
+      # name; it was only dormant because this fork has no Play credentials, and
+      # adding a SERVICE_ACCOUNT_JSON secret would have silently started
+      # publishing this fork's builds to upstream's app listing.
+      #
+      # The step and the "Generate Play Store changelogs" step that fed it (via
+      # .github/scripts/generate_whatsnew.sh -> distribution/whatsnew) have been
+      # removed. If this fork ever ships to Play, it needs its own applicationId
+      # and its own Play Console listing first.
 
-      #7 Upload to Play Store (skipped on forks without the Play secrets)
-      - name: Upload to Google Play
-        if: ${{ env.HAS_PLAY_SECRETS == 'true' }}
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
-          packageName: de.doen1el.calibreWebCompanion
-          releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          tracks: production
-          status: completed
-          releaseName: 'Release ${{ github.run_number }}'
-          whatsNewDirectory: distribution/whatsnew
-
-      #10 Upload Artifacts (APK)
+      #7 Upload Artifacts (APK). The name states the signing mode so a
+      # debug-signed verification build can't be mistaken for a shippable one.
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Releases
+          name:
+            ${{ env.RELEASE_SIGNED == 'true' && 'Releases' ||
+            'Releases-DEBUG-SIGNED-do-not-distribute' }}
           path: |
             build/app/outputs/flutter-apk/*.apk
 
-      #11 Build the GitHub release body from the fastlane changelog and template
+      #8 Build the GitHub release body from the fastlane changelog and template
       - name: Build release notes
         run: |
           changelog="fastlane/metadata/android/en-US/changelogs/${VERSION_CODE}.txt"
@@ -137,9 +161,12 @@ jobs:
           echo "----- release_notes.md -----"
           cat release_notes.md
 
-      #12 Create GitHub Release (skipped on forks without a release TOKEN)
+      #9 Create GitHub Release (skipped on forks without a release TOKEN)
+      # Debug-signed APKs must never reach a release draft: they carry the
+      # public Android debug key, so they offer no authenticity guarantee and
+      # cannot be upgraded by a real signed release.
       - name: Create Release Draft
-        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
+        if: ${{ env.HAS_RELEASE_TOKEN == 'true' && env.RELEASE_SIGNED == 'true' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/app/outputs/flutter-apk/*.apk'

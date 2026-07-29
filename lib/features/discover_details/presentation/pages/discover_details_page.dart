@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:calibre_web_companion/features/offline/cubit/connectivity_cubit.dart';
 import 'package:calibre_web_companion/features/discover_details/bloc/discover_details_bloc.dart';
 import 'package:calibre_web_companion/features/discover_details/bloc/discover_details_event.dart';
 import 'package:calibre_web_companion/features/discover_details/bloc/discover_details_state.dart';
@@ -69,6 +70,7 @@ class DiscoverDetailsPage extends StatelessWidget {
               "${localizations.errorLoadingData}: ${state.errorMessage}",
               isError: true,
             );
+            context.read<ConnectivityCubit>().reportFailure();
           }
         },
         builder: (context, state) {

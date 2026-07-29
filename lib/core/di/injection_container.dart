@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -56,9 +57,12 @@ final GetIt getIt = GetIt.instance;
 Future<void> init() async {
   final sharedPreferences = await SharedPreferences.getInstance();
   final appLogService = AppLogService();
+  // The in-app log viewer (Settings > Logs) is user-exportable, so release
+  // builds keep informational logs — useful for bug reports — but drop debug
+  // and trace, which carry request URLs with query strings and token lengths.
   final logger = Logger(
     filter: ProductionFilter(),
-    level: Level.trace,
+    level: kReleaseMode ? Level.info : Level.trace,
     output: MultiOutput([ConsoleOutput(), AppLogOutput(appLogService)]),
   );
   final allowSelfSigned =

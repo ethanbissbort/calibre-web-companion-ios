@@ -11,6 +11,7 @@ class DownloadManager {
 
   Map<String, String> _downloadedBooks = {};
   static const String _storageKey = 'downloaded_books_map';
+  static const String _documentsMarker = '/Documents/';
 
   DownloadManager({required SharedPreferences prefs, required Logger logger})
     : _prefs = prefs,
@@ -52,16 +53,14 @@ class DownloadManager {
   /// updated. Try to re-resolve a stale absolute path against the current
   /// Documents directory before treating the file as gone.
   Future<String?> _relocateFile(String path) async {
-    if (Platform.isAndroid) return null;
+    if (!_canRelocate(path)) return null;
 
-    const marker = '/Documents/';
-    final index = path.indexOf(marker);
-    if (index == -1) return null;
-
+    final index = path.indexOf(_documentsMarker);
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
       final candidate =
-          '${documentsDir.path}/${path.substring(index + marker.length)}';
+          '${documentsDir.path}/'
+          '${path.substring(index + _documentsMarker.length)}';
       if (candidate != path && File(candidate).existsSync()) {
         return candidate;
       }
@@ -70,6 +69,22 @@ class DownloadManager {
     }
     return null;
   }
+
+  /// Whether a stale path can even be re-anchored to the current Documents
+  /// directory. Always false on Android, where paths are SAF document URIs and
+  /// relocation neither applies nor is needed.
+  bool _canRelocate(String path) =>
+      !Platform.isAndroid && path.contains(_documentsMarker);
+
+  /// Whether a missing file is proof that the download is gone.
+  ///
+  /// On Android it is: paths are stable, so a missing file was deleted. On
+  /// iOS/macOS a path we cannot re-anchor (no `/Documents/` segment) is
+  /// inconclusive — the container may simply have moved somewhere this code
+  /// does not recognise — so the registry entry is kept rather than dropped,
+  /// since dropping it loses the book from the offline library for good.
+  bool _isConfirmedMissing(String path) =>
+      Platform.isAndroid || _canRelocate(path);
 
   Future<void> _verifyFilesExist() async {
     final List<String> toRemove = [];
@@ -85,6 +100,14 @@ class DownloadManager {
             'File for book ${entry.key} moved to $relocated. Updating path.',
           );
           toRelocate[entry.key] = relocated;
+          continue;
+        }
+
+        if (!_isConfirmedMissing(entry.value)) {
+          _logger.w(
+            'File for book ${entry.key} not found at ${entry.value} and the '
+            'path could not be re-resolved. Keeping the entry.',
+          );
           continue;
         }
 
@@ -122,6 +145,14 @@ class DownloadManager {
         _downloadedBooks[uuid] = relocated;
         await _save();
         return true;
+      }
+
+      if (!_isConfirmedMissing(path)) {
+        _logger.w(
+          'Runtime check: File for $uuid not found at $path and the path could '
+          'not be re-resolved. Keeping the entry.',
+        );
+        return false;
       }
 
       _logger.i('Runtime check: File for $uuid missing. Unregistering.');

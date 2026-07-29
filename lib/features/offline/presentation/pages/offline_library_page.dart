@@ -28,13 +28,21 @@ class _OfflineLibraryPageState extends State<OfflineLibraryPage> {
     _load();
   }
 
-  void _load() {
+  Future<void> _load() async {
     final downloads = GetIt.instance<DownloadManager>().allDownloads;
     final repo = GetIt.instance<OfflineLibraryRepository>();
 
+    // The download registry is the source of truth for where a file lives:
+    // DownloadManager re-resolves its paths after an iOS app update, while the
+    // paths stored alongside the offline metadata are written once and go
+    // stale when the app-container UUID changes. reconcilePaths adopts the
+    // registry path (and heals cover paths) and persists the result.
+    final reconciled = await repo.reconcilePaths(downloads);
+    if (!mounted) return;
+
     final books =
         downloads.entries.map((entry) {
-          final meta = repo.getBook(entry.key);
+          final meta = reconciled[entry.key];
           if (meta != null && meta.filePath.isNotEmpty) return meta;
           return _fallbackModel(entry.key, entry.value);
         }).toList();

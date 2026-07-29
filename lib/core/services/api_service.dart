@@ -16,6 +16,53 @@ import 'package:calibre_web_companion/features/book_view/data/datasources/book_v
 
 enum AuthMethod { none, cookie, basic, auto }
 
+/// How long to wait for a TCP connection to be established before giving up.
+const Duration kConnectionTimeout = Duration(seconds: 15);
+
+/// How long a single request may take end to end before it is aborted.
+///
+/// Without this a black-holed connection (server behind a firewall that drops
+/// packets instead of rejecting them) leaves the request — and the spinner the
+/// user is looking at — pending forever.
+const Duration kRequestTimeout = Duration(seconds: 45);
+
+/// How long a response body may stall between chunks before it is abandoned.
+///
+/// This is an *idle* timeout, not a total one, so a slow but progressing
+/// multi-hundred-megabyte download is never cut short.
+const Duration kResponseIdleTimeout = Duration(seconds: 60);
+
+/// Bounds every request made through the wrapped client.
+///
+/// `http`'s convenience methods (`get`, `post`, …) all funnel through [send],
+/// so wrapping [send] covers every request without having to remember a
+/// `.timeout()` at each of the dozens of call sites.
+class _TimeoutClient extends http.BaseClient {
+  _TimeoutClient(this._inner);
+
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request).timeout(kRequestTimeout);
+
+    // Headers arrived in time; now guard against a body that stops mid-stream.
+    return http.StreamedResponse(
+      response.stream.timeout(kResponseIdleTimeout),
+      response.statusCode,
+      contentLength: response.contentLength,
+      request: response.request,
+      headers: response.headers,
+      isRedirect: response.isRedirect,
+      persistentConnection: response.persistentConnection,
+      reasonPhrase: response.reasonPhrase,
+    );
+  }
+
+  @override
+  void close() => _inner.close();
+}
+
 class ApiService {
   final Logger _logger = Logger();
   HttpClient? _httpClient;
@@ -99,12 +146,13 @@ class ApiService {
     _digest.reset();
 
     _httpClient = HttpClient();
+    _httpClient!.connectionTimeout = kConnectionTimeout;
     if (_allowSelfSigned) {
       _logger.w('Allowing self-signed certificates.');
       _httpClient!.badCertificateCallback = (cert, host, port) => true;
     }
     _client?.close();
-    _client = IOClient(_httpClient!);
+    _client = _TimeoutClient(IOClient(_httpClient!));
   }
 
   void dispose() {
@@ -114,10 +162,11 @@ class ApiService {
 
   http.Client _createClient() {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = kConnectionTimeout;
     if (_allowSelfSigned) {
       httpClient.badCertificateCallback = (cert, host, port) => true;
     }
-    return IOClient(httpClient);
+    return _TimeoutClient(IOClient(httpClient));
   }
 
   Future<void> reset() async {
@@ -379,7 +428,14 @@ class ApiService {
     } catch (e) {
       _logger.e('Failed to parse JSON response: $e');
 
-      _logger.d('Response body: ${response.body}...');
+      // Never dump the raw body: on an unexpected redirect to the login page
+      // it contains CSRF tokens and session markers, and the log buffer is
+      // user-exportable from the in-app log viewer.
+      _logger.d(
+        'Response body omitted from log '
+        '(${response.body.length} bytes, content-type: '
+        '${response.headers['content-type'] ?? 'unknown'})',
+      );
       throw FormatException('Invalid JSON response: $e');
     }
   }
@@ -1030,7 +1086,7 @@ class ApiService {
         'CSRF token not found in the response using selector: $selector',
       );
     } else {
-      _logger.d('CSRF token found: $csrfToken');
+      _logger.d('CSRF token found (${csrfToken.length} chars)');
     }
 
     return {'token': csrfToken, 'cookies': response.headers['set-cookie']};

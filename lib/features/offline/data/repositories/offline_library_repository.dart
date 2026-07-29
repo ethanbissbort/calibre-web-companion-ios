@@ -14,6 +14,7 @@ class OfflineLibraryRepository {
 
   static const String _storageKey = 'offline_library';
   static const String _coverDirName = 'offline_covers';
+  static const String _documentsMarker = '/Documents/';
 
   OfflineLibraryRepository({
     required SharedPreferences prefs,
@@ -86,6 +87,96 @@ class OfflineLibraryRepository {
   }
 
   bool isSaved(String uuid) => _readMap().containsKey(uuid);
+
+  /// Re-points stored metadata at the paths where the files actually live now.
+  ///
+  /// On iOS/macOS the app-container UUID changes on every app update, so the
+  /// absolute paths written at download time go stale. [downloadPaths] holds
+  /// the paths DownloadManager keeps, which it already heals on startup, so
+  /// they win over whatever is stored here. Cover paths are healed the same
+  /// way by re-resolving them against the current Documents directory.
+  ///
+  /// Healed values are written back so the work only has to happen once, and
+  /// nothing is ever dropped: a path that cannot be resolved is left as-is.
+  ///
+  /// On Android this is a no-op — the stored path and the download registry
+  /// path are always the same string there, and app-private paths are stable.
+  Future<Map<String, OfflineBookModel>> reconcilePaths(
+    Map<String, String> downloadPaths,
+  ) async {
+    final map = _readMap();
+    if (map.isEmpty) return const {};
+
+    String? documentsPath;
+    if (!Platform.isAndroid) {
+      try {
+        documentsPath = (await getApplicationDocumentsDirectory()).path;
+      } catch (e) {
+        _logger.w('Could not resolve documents directory: $e');
+      }
+    }
+
+    final books = <String, OfflineBookModel>{};
+    var changed = false;
+
+    for (final entry in map.entries) {
+      final stored = entry.value;
+      if (stored is! Map) continue;
+
+      final original = OfflineBookModel.fromJson(
+        Map<String, dynamic>.from(stored),
+      );
+      var book = original;
+
+      final downloadPath = downloadPaths[entry.key];
+      if (downloadPath != null &&
+          downloadPath.isNotEmpty &&
+          downloadPath != book.filePath) {
+        _logger.i(
+          'Offline metadata for ${entry.key} pointed at a stale path. '
+          'Using $downloadPath.',
+        );
+        book = book.copyWith(filePath: downloadPath);
+      }
+
+      if (documentsPath != null) {
+        final healedCover = _relocateInDocuments(book.coverPath, documentsPath);
+        if (healedCover != null) book = book.copyWith(coverPath: healedCover);
+      }
+
+      if (book.filePath != original.filePath ||
+          book.coverPath != original.coverPath) {
+        map[entry.key] = book.toJson();
+        changed = true;
+      }
+      books[entry.key] = book;
+    }
+
+    if (changed) await _writeMap(map);
+    return books;
+  }
+
+  /// Re-resolves a stale absolute path against the current Documents
+  /// directory. Returns null when the path is still valid, has no
+  /// `/Documents/` segment to re-anchor, or the file is not at the new
+  /// location either — in every one of those cases the caller keeps the
+  /// original path rather than discarding it.
+  String? _relocateInDocuments(String? path, String documentsPath) {
+    if (path == null || path.isEmpty) return null;
+    try {
+      if (File(path).existsSync()) return null;
+
+      final index = path.indexOf(_documentsMarker);
+      if (index == -1) return null;
+
+      final candidate =
+          '$documentsPath/${path.substring(index + _documentsMarker.length)}';
+      if (candidate != path && File(candidate).existsSync()) return candidate;
+    } catch (e) {
+      _logger.w('Failed to relocate $path: $e');
+    }
+    return null;
+  }
 
   Future<String?> _writeCover(String uuid, Uint8List bytes) async {
     try {

@@ -473,5 +473,6 @@
     "archivedBookFailed": "",
     "bookDetailsAllSectionsDisabledDescription": "",
     "failed": "",
-    "syncsReadingProgress": ""
+    "syncsReadingProgress": "",
+    "networkErrorGeneric": "Sunucuya ulaşılamıyor. Bağlantınızı veya sunucu adresini kontrol edin."
 }
