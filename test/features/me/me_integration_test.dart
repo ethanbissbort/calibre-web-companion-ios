@@ -20,7 +20,7 @@ void main() {
 
     expect(stats, isNotNull);
     expect(stats.books, greaterThanOrEqualTo(0));
-  });
+  }, skip: skipWithoutCredentials);
 
   test('getIsOpds() is false for a Calibre-Web server', () async {
     final api = await setupIntegrationTest();
@@ -31,7 +31,7 @@ void main() {
     );
 
     expect(dataSource.getIsOpds(), isFalse);
-  });
+  }, skip: skipWithoutCredentials);
 
   test(
     'logOut() — GET /logout',

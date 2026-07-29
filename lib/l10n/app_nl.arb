@@ -370,6 +370,7 @@
     "foundXItemsToSync": "",
     "vertical": "",
     "language": "",
+    "systemLanguage": "Systeemtaal",
     "serverUrlMissing": "",
     "switchAccountConfirmation": "",
     "bookCouldNotBeFound": "",

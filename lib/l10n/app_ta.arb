@@ -60,6 +60,7 @@
     "updated": "புதுப்பிக்கப்பட்டது",
     "publisher": "பதிப்பாளர்",
     "language": "மொழி",
+    "systemLanguage": "கணினி மொழி",
     "fileInfo": "கோப்பு செய்தி",
     "size": "அளவு",
     "description": "விவரம்",

@@ -57,6 +57,41 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
 
   bool _sendToEReaderCancelled = false;
 
+  /// Token of the device download backing a "send to e-reader" transfer.
+  DownloadCancellationToken? _sendToEReaderToken;
+
+  /// Tokens of the downloads currently in flight (device download, "open in
+  /// reader" and the in-app reader stream). Tripping one aborts that transfer,
+  /// removes its partial file and makes the handler report a cancellation
+  /// rather than a failure.
+  final Set<DownloadCancellationToken> _activeDownloadTokens = {};
+
+  DownloadCancellationToken _startDownload() {
+    final token = DownloadCancellationToken();
+    _activeDownloadTokens.add(token);
+    return token;
+  }
+
+  void _finishDownload(DownloadCancellationToken token) {
+    _activeDownloadTokens.remove(token);
+  }
+
+  void _cancelActiveDownloads([String? reason]) {
+    for (final token in _activeDownloadTokens.toList()) {
+      token.cancel(reason);
+    }
+  }
+
+  @override
+  Future<void> close() {
+    // Nobody is left to receive the result, so stop the transfers and let the
+    // datasource clean up its .part files.
+    _cancelActiveDownloads('Screen closed');
+    _sendToEReaderToken?.cancel();
+    _sendToEReaderCancelled = true;
+    return super.close();
+  }
+
   Future<void> _onLoadBookDetails(
     LoadBookDetails event,
     Emitter<BookDetailsState> emit,
@@ -280,6 +315,18 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
       ),
     );
 
+    final cancelToken = _startDownload();
+    final throttle = DownloadProgressThrottle();
+
+    void reportProgress(int progress) {
+      // Progress arrives per network chunk. Emitting (and logging) every one of
+      // them rebuilds the UI hundreds of times per second and floods the log
+      // ring buffer, so only let a bounded number through.
+      if (emit.isDone) return;
+      if (!throttle.shouldEmit(progress)) return;
+      emit(state.copyWith(downloadProgress: progress));
+    }
+
     try {
       if (state.bookDetails == null) {
         throw Exception('Book details not available');
@@ -293,9 +340,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           state.bookDetails!,
           format: event.format,
           schema: schema,
-          progressCallback: (progress) {
-            emit(state.copyWith(downloadProgress: progress));
-          },
+          progressCallback: reportProgress,
+          cancelToken: cancelToken,
         );
       } else {
         filePath = await repository.downloadBook(
@@ -303,9 +349,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           event.directory!,
           schema,
           format: event.format,
-          progressCallback: (progress) {
-            emit(state.copyWith(downloadProgress: progress));
-          },
+          progressCallback: reportProgress,
+          cancelToken: cancelToken,
         );
       }
 
@@ -323,30 +368,42 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
         state.copyWith(
           downloadFilePath: filePath,
           downloadState: DownloadState.success,
+          downloadProgress: 100,
           isDownloaded: true,
         ),
       );
     } catch (e) {
-      logger.e('Error in download process: $e');
       if (e is CancellationException) {
-        emit(
-          state.copyWith(
-            downloadState: DownloadState.canceled,
-            downloadErrorMessage: e.message,
-          ),
-        );
+        logger.i('Download cancelled: ${e.message}');
+        if (!emit.isDone) {
+          emit(
+            state.copyWith(
+              downloadState: DownloadState.canceled,
+              downloadErrorMessage: e.message,
+            ),
+          );
+        }
       } else {
-        emit(
-          state.copyWith(
-            downloadState: DownloadState.failed,
-            downloadErrorMessage: e.toString(),
-          ),
-        );
+        logger.e('Error in download process: $e');
+        if (!emit.isDone) {
+          emit(
+            state.copyWith(
+              downloadState: DownloadState.failed,
+              downloadErrorMessage: e.toString(),
+            ),
+          );
+        }
       }
+    } finally {
+      _finishDownload(cancelToken);
     }
   }
 
   void _onCancelDownload(CancelDownload event, Emitter<BookDetailsState> emit) {
+    logger.i('Download cancellation requested');
+    // Aborts the in-flight transfer between chunks; the download handler then
+    // deletes the .part file and reports DownloadState.canceled itself.
+    _cancelActiveDownloads();
     emit(state.copyWith(downloadState: DownloadState.canceled));
   }
 
@@ -401,6 +458,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
       return;
     }
 
+    final cancelToken = _startDownload();
+
     try {
       logger.i('Opening book in reader: ${state.bookDetails!.title}');
       emit(
@@ -417,12 +476,15 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
               ? details.formats.first.toLowerCase()
               : 'epub';
 
+      final throttle = DownloadProgressThrottle();
+
       final success = await repository.openInReader(
         details,
         event.selectedDirectory,
         event.schema,
         progressCallback: (progress) {
-          logger.d('Reader download progress: $progress%');
+          if (emit.isDone) return;
+          if (!throttle.shouldEmit(progress)) return;
           emit(state.copyWith(downloadProgress: progress));
         },
         onFileDownloaded: (path) async {
@@ -430,6 +492,7 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           await _cacheOfflineSnapshot(uuid, details, path, format);
           emit(state.copyWith(downloadFilePath: path, isDownloaded: true));
         },
+        cancelToken: cancelToken,
       );
 
       if (success) {
@@ -447,14 +510,29 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           ),
         );
       }
+    } on CancellationException catch (e) {
+      logger.i('Opening book in reader cancelled: ${e.message}');
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            openInReaderState: OpenInReaderState.initial,
+            downloadState: DownloadState.canceled,
+            downloadProgress: 0,
+          ),
+        );
+      }
     } catch (e) {
       logger.e('Error opening book in reader: $e');
-      emit(
-        state.copyWith(
-          openInReaderState: OpenInReaderState.error,
-          errorMessage: e.toString(),
-        ),
-      );
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            openInReaderState: OpenInReaderState.error,
+            errorMessage: e.toString(),
+          ),
+        );
+      }
+    } finally {
+      _finishDownload(cancelToken);
     }
   }
 
@@ -471,6 +549,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
       );
       return;
     }
+
+    final cancelToken = _startDownload();
 
     try {
       logger.i('Opening book in internal reader: ${state.bookDetails!.title}');
@@ -492,13 +572,16 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
 
       if (bytes == null) {
         logger.i('Streaming EPUB bytes into reader (no local EPUB copy).');
+        final throttle = DownloadProgressThrottle();
         bytes = await repository.streamBookBytes(
           event.book,
           format: event.format,
           progressCallback: (progress) {
-            logger.d('Reader stream progress: $progress%');
+            if (emit.isDone) return;
+            if (!throttle.shouldEmit(progress)) return;
             emit(state.copyWith(downloadProgress: progress));
           },
+          cancelToken: cancelToken,
         );
       }
 
@@ -508,14 +591,28 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           readerBytes: bytes,
         ),
       );
+    } on CancellationException catch (e) {
+      logger.i('Reader stream cancelled: ${e.message}');
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            openInInternalReaderState: OpenInInternalReaderState.initial,
+            downloadProgress: 0,
+          ),
+        );
+      }
     } catch (e) {
       logger.e('Error opening book in internal reader: $e');
-      emit(
-        state.copyWith(
-          openInInternalReaderState: OpenInInternalReaderState.error,
-          errorMessage: e.toString(),
-        ),
-      );
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            openInInternalReaderState: OpenInInternalReaderState.error,
+            errorMessage: e.toString(),
+          ),
+        );
+      }
+    } finally {
+      _finishDownload(cancelToken);
     }
   }
 
@@ -626,11 +723,13 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
     );
 
     _sendToEReaderCancelled = false;
+    final sendCancelToken = DownloadCancellationToken();
+    _sendToEReaderToken = sendCancelToken;
 
     try {
       emit(state.copyWith(sendToEReaderState: SendToEReaderState.downloading));
 
-      final List<int> bookBytes = [];
+      final BytesBuilder bookBytesBuilder = BytesBuilder(copy: false);
 
       if (event.downloadToDeviceFirst) {
         if (state.bookDetails == null) {
@@ -640,16 +739,18 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           throw Exception('Download directory is missing');
         }
 
+        final downloadThrottle = DownloadProgressThrottle();
         final localFileUri = await repository.downloadBook(
           state.bookDetails!,
           event.selectedDirectory!,
           event.schema!,
           format: 'epub',
           progressCallback: (progress) {
-            if (!_sendToEReaderCancelled) {
-              emit(state.copyWith(sendToEReaderProgress: progress));
-            }
+            if (_sendToEReaderCancelled || emit.isDone) return;
+            if (!downloadThrottle.shouldEmit(progress)) return;
+            emit(state.copyWith(sendToEReaderProgress: progress));
           },
+          cancelToken: sendCancelToken,
         );
 
         if (_sendToEReaderCancelled) {
@@ -668,15 +769,19 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
         if (bytes == null || bytes.isEmpty) {
           throw Exception('Downloaded file is empty');
         }
-        bookBytes.addAll(bytes);
+        bookBytesBuilder.add(bytes);
       } else {
         final response = await repository.getDownloadStream(
           event.bookId,
           'epub',
         );
 
-        var contentLength = response.contentLength ?? -1;
+        final contentLength =
+            isContentLengthComparable(response.headers)
+                ? (response.contentLength ?? -1)
+                : -1;
         int receivedBytes = 0;
+        final streamThrottle = DownloadProgressThrottle();
 
         await for (final chunk in response.stream) {
           if (_sendToEReaderCancelled) {
@@ -687,13 +792,30 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
           }
 
           receivedBytes += chunk.length;
-          bookBytes.addAll(chunk);
+          bookBytesBuilder.add(chunk);
 
           if (contentLength > 0) {
-            final progress = (receivedBytes / contentLength * 100).round();
-            logger.d('Download progress: $progress%');
-            emit(state.copyWith(sendToEReaderProgress: progress));
+            final progress = (receivedBytes / contentLength * 100)
+                .round()
+                .clamp(0, 100);
+            if (!emit.isDone && streamThrottle.shouldEmit(progress)) {
+              emit(state.copyWith(sendToEReaderProgress: progress));
+            }
           }
+        }
+
+        final check = checkDownloadSize(
+          receivedBytes: receivedBytes,
+          contentLength: contentLength,
+        );
+        if (!check.isUsable) {
+          throw Exception(
+            downloadSizeMessage(
+              check,
+              receivedBytes: receivedBytes,
+              contentLength: contentLength,
+            ),
+          );
         }
       }
 
@@ -701,6 +823,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
         emit(state.copyWith(sendToEReaderState: SendToEReaderState.cancelled));
         return;
       }
+
+      final bookBytes = bookBytesBuilder.takeBytes();
 
       if (bookBytes.isEmpty) {
         throw Exception('Failed to download book');
@@ -743,7 +867,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
         ),
       );
     } catch (e) {
-      if (_sendToEReaderCancelled) {
+      if (emit.isDone) return;
+      if (_sendToEReaderCancelled || e is CancellationException) {
         emit(state.copyWith(sendToEReaderState: SendToEReaderState.cancelled));
       } else {
         emit(
@@ -752,6 +877,10 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
             errorMessage: e.toString(),
           ),
         );
+      }
+    } finally {
+      if (identical(_sendToEReaderToken, sendCancelToken)) {
+        _sendToEReaderToken = null;
       }
     }
   }
@@ -797,6 +926,8 @@ class BookDetailsBloc extends Bloc<BookDetailsEvent, BookDetailsState> {
     Emitter<BookDetailsState> emit,
   ) {
     _sendToEReaderCancelled = true;
+    // Aborts a device download started for "send to e-reader" between chunks.
+    _sendToEReaderToken?.cancel('Send to e-reader cancelled');
   }
 
   Future<void> _onOpenSeries(

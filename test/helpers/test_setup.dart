@@ -8,9 +8,30 @@ import 'package:calibre_web_companion/features/login/data/models/login_credentia
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../test_env.dart';
+
+import 'integration_env.dart';
+
+// Re-exported so a test only needs `import '../../helpers/test_setup.dart';` to
+// get both the setup helpers and the `skip:` guard that goes with them.
+export 'integration_env.dart'
+    show
+        TestEnv,
+        hasIntegrationCredentials,
+        skipWithoutCredentials,
+        skipWithoutDownloader;
 
 Future<ApiService> setupIntegrationTest() async {
+  // Every integration test is declared with `skip: skipWithoutCredentials`, so
+  // this is unreachable without a configured server. Fail loudly rather than
+  // let a newly added, unguarded test report a confusing login failure.
+  if (!hasIntegrationCredentials) {
+    throw StateError(
+      'setupIntegrationTest() called without integration credentials. '
+      'Declare the test with `skip: skipWithoutCredentials`. '
+      'See test/test_env.example.dart.',
+    );
+  }
+
   SharedPreferences.setMockInitialValues({
     'base_url': TestEnv.baseUrl,
     'username': TestEnv.username,

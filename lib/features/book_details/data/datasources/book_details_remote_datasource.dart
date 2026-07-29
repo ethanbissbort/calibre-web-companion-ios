@@ -12,9 +12,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 
+import 'package:calibre_web_companion/core/exceptions/cancellation_exception.dart';
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/download_manager.dart';
 import 'package:calibre_web_companion/features/settings/data/models/download_schema.dart';
 import 'package:calibre_web_companion/features/book_details/data/models/book_details_model.dart';
 import 'package:calibre_web_companion/features/book_view/data/models/book_view_model.dart';
@@ -285,6 +286,7 @@ class BookDetailsRemoteDatasource {
     DownloadSchema schema, {
     String format = 'epub',
     Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
   }) async {
     return downloadBookToPath(
       book: book,
@@ -292,6 +294,7 @@ class BookDetailsRemoteDatasource {
       schema: schema,
       format: format,
       progressCallback: progressCallback,
+      cancelToken: cancelToken,
     );
   }
 
@@ -600,6 +603,145 @@ class BookDetailsRemoteDatasource {
     throw Exception('Failed to update metadata (${response.statusCode})');
   }
 
+  /// Directory used to stage downloads that cannot be streamed straight to
+  /// their final location (the Android SAF path).
+  Future<Directory> _stagingDirectory() async {
+    final temp = await getTemporaryDirectory();
+    final dir = Directory(path.join(temp.path, downloadStagingDirectoryName));
+    if (!dir.existsSync()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<void> _deleteQuietly(File file) async {
+    try {
+      if (file.existsSync()) await file.delete();
+    } catch (e) {
+      logger.w('Could not delete temporary file ${file.path}: $e');
+    }
+  }
+
+  Future<void> _closeQuietly(IOSink sink) async {
+    try {
+      await sink.close();
+    } catch (_) {
+      // The sink is already broken; nothing useful left to do.
+    }
+  }
+
+  /// The announced body length, but only when it can be compared against the
+  /// number of bytes we actually read (see [isContentLengthComparable]).
+  int _comparableContentLength(StreamedResponse response) {
+    if (!isContentLengthComparable(response.headers)) return -1;
+    return response.contentLength ?? -1;
+  }
+
+  /// Fails loudly when a transfer was cut short, so a truncated book is never
+  /// registered as a complete one.
+  void _validateReceivedSize({
+    required int receivedBytes,
+    required int contentLength,
+    required String title,
+  }) {
+    final check = checkDownloadSize(
+      receivedBytes: receivedBytes,
+      contentLength: contentLength,
+    );
+    final message = downloadSizeMessage(
+      check,
+      receivedBytes: receivedBytes,
+      contentLength: contentLength,
+    );
+
+    if (!check.isUsable) {
+      logger.e('Download of "$title" failed validation: $message');
+      throw Exception(message);
+    }
+    if (check == DownloadSizeCheck.overrun) {
+      logger.w('Download of "$title": $message');
+    }
+  }
+
+  /// Streams the download for [book] into [partFile].
+  ///
+  /// Memory stays flat: chunks go straight to disk through an [IOSink] instead
+  /// of being accumulated in a list, so even a multi-hundred-megabyte PDF does
+  /// not risk an OOM/jetsam kill. Returns the number of bytes written.
+  ///
+  /// On any failure — including cancellation and a truncated transfer —
+  /// [partFile] is deleted before the error propagates, so a half-written file
+  /// can never be mistaken for a book.
+  Future<int> _streamToPartFile({
+    required BookDetailsModel book,
+    required String format,
+    required File partFile,
+    Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
+  }) async {
+    cancelToken?.throwIfCancelled();
+
+    final parent = partFile.parent;
+    if (!parent.existsSync()) {
+      await parent.create(recursive: true);
+    }
+    await _deleteQuietly(partFile);
+
+    final response = await getDownloadStream(book.id.toString(), format);
+    final contentLength = _comparableContentLength(response);
+
+    logger.i(
+      'Download response status: ${response.statusCode}, '
+      'Content length: $contentLength',
+    );
+
+    final sink = partFile.openWrite();
+    try {
+      final received = await pumpDownloadStream(
+        source: response.stream,
+        sink: sink,
+        expectedLength: contentLength,
+        onProgress:
+            progressCallback == null ? null : (p) => progressCallback(p),
+        cancelToken: cancelToken,
+      );
+
+      await sink.flush();
+      await sink.close();
+
+      _validateReceivedSize(
+        receivedBytes: received,
+        contentLength: contentLength,
+        title: book.title,
+      );
+
+      return received;
+    } catch (e) {
+      await _closeQuietly(sink);
+      await _deleteQuietly(partFile);
+      rethrow;
+    }
+  }
+
+  /// Removes a document we created in a SAF directory, used to clean up after a
+  /// failed write. Tries the underscore variant too, because SAF replaces
+  /// spaces in display names.
+  Future<void> _deleteSafFile(DocumentFile directory, String fileName) async {
+    final candidates = <String>{fileName, fileName.replaceAll(' ', '_')};
+    for (final candidate in candidates) {
+      try {
+        final doc = await directory.find(candidate);
+        if (doc != null && doc.isFile) {
+          await doc.delete();
+          logger.i('Removed incomplete file $candidate');
+          return;
+        }
+      } catch (e) {
+        logger.w('Could not remove incomplete file $candidate: $e');
+      }
+    }
+  }
+
   Future<DocumentFile> _getOrCreateDirectory(
     DocumentFile parent,
     String name,
@@ -611,6 +753,10 @@ class BookDetailsRemoteDatasource {
     return await parent.createDirectory(name) ?? parent;
   }
 
+  /// Downloads [book] into a SAF directory.
+  ///
+  /// [deleteOnError] removes the document again when the write fails, so a
+  /// broken transfer never leaves a corrupt file at the destination.
   Future<String> downloadBookToPath({
     required BookDetailsModel book,
     required DocumentFile selectedDirectory,
@@ -619,6 +765,7 @@ class BookDetailsRemoteDatasource {
     Function(int)? progressCallback,
     bool reuseExistingFile = true,
     bool deleteOnError = true,
+    DownloadCancellationToken? cancelToken,
   }) async {
     try {
       logger.i(
@@ -708,42 +855,64 @@ class BookDetailsRemoteDatasource {
         return existingFile.uri.toString();
       }
 
-      final response = await getDownloadStream(book.id.toString(), format);
-      final contentLength = response.contentLength ?? -1;
-
-      logger.i(
-        'Download response status: ${response.statusCode}, Content length: $contentLength',
+      // SAF exposes no atomic "write then rename" primitive we can drive from
+      // Dart — docman can only create a document from a complete byte array.
+      // Staging the transfer in a private .part file first buys the guarantee
+      // that matters: the document at the final location is only ever created
+      // from a fully received and validated payload, so a cancelled or
+      // truncated download never leaves a half-written book behind. The cost is
+      // holding the book in memory for the single platform-channel hand-off,
+      // which is still one copy instead of the three the growing List<int> used
+      // to need.
+      final stagingDir = await _stagingDirectory();
+      final staging = File(
+        path.join(
+          stagingDir.path,
+          '${DateTime.now().microsecondsSinceEpoch}_$fileName'
+          '$downloadPartSuffix',
+        ),
       );
 
-      final List<int> bytes = [];
-      int receivedBytes = 0;
+      try {
+        final receivedBytes = await _streamToPartFile(
+          book: book,
+          format: format,
+          partFile: staging,
+          progressCallback: progressCallback,
+          cancelToken: cancelToken,
+        );
 
-      await for (final chunk in response.stream) {
-        bytes.addAll(chunk);
-        receivedBytes += chunk.length;
+        cancelToken?.throwIfCancelled();
 
-        if (contentLength > 0 && progressCallback != null) {
-          final progress = (receivedBytes / contentLength * 100).round();
-          progressCallback(progress);
+        final Uint8List fileData = await staging.readAsBytes();
+
+        final createdFile = await targetDir.createFile(
+          name: fileName,
+          bytes: fileData,
+        );
+
+        if (createdFile == null) {
+          logger.e('Failed to create file in SAF directory');
+          throw Exception('Failed to create file in SAF directory');
         }
+
+        logger.i(
+          'Download complete: ${createdFile.uri} with $receivedBytes bytes',
+        );
+        return createdFile.uri;
+      } catch (e) {
+        // Only clean up when nothing was there before: a failed re-download
+        // must not destroy the copy the user already had.
+        if (deleteOnError && existingFile == null) {
+          await _deleteSafFile(targetDir, fileName);
+        }
+        rethrow;
+      } finally {
+        await _deleteQuietly(staging);
       }
-
-      final Uint8List fileData = Uint8List.fromList(bytes);
-
-      final createdFile = await targetDir.createFile(
-        name: fileName,
-        bytes: fileData,
-      );
-
-      if (createdFile == null) {
-        logger.e('Failed to create file in SAF directory');
-        throw Exception('Failed to create file in SAF directory');
-      }
-
-      logger.i(
-        'Download complete: ${createdFile.uri} with $receivedBytes bytes',
-      );
-      return createdFile.uri;
+    } on CancellationException {
+      logger.i('Download cancelled: ${book.title}');
+      rethrow;
     } catch (e) {
       logger.e('Exception while downloading book: $e');
       throw Exception('Error downloading book: $e');
@@ -786,6 +955,7 @@ class BookDetailsRemoteDatasource {
     DownloadSchema schema, {
     Function(int)? progressCallback,
     Future<void> Function(String path)? onFileDownloaded,
+    DownloadCancellationToken? cancelToken,
   }) async {
     try {
       logger.i('Opening book in reader: ${book.title}');
@@ -803,6 +973,7 @@ class BookDetailsRemoteDatasource {
           format: format,
           schema: schema,
           progressCallback: progressCallback,
+          cancelToken: cancelToken,
         );
         durablePath = localPath;
       } else {
@@ -812,6 +983,7 @@ class BookDetailsRemoteDatasource {
           schema: schema,
           format: format,
           progressCallback: progressCallback,
+          cancelToken: cancelToken,
         );
 
         final file =
@@ -842,6 +1014,9 @@ class BookDetailsRemoteDatasource {
 
       logger.i('Opened book successfully');
       return true;
+    } on CancellationException {
+      logger.i('Opening book in reader cancelled: ${book.title}');
+      rethrow;
     } catch (e) {
       logger.e('Error opening book in reader: $e');
       throw Exception('Error opening book in reader: $e');
@@ -958,24 +1133,49 @@ class BookDetailsRemoteDatasource {
     return null;
   }
 
+  /// Reads a book fully into memory.
+  ///
+  /// Only for consumers that genuinely need the bytes (the in-app reader).
+  /// Anything that ends up on disk must use [downloadBookToDevice] or
+  /// [downloadBookToPath], which stream to a file instead.
   Future<Uint8List> streamBookBytes(
     BookDetailsModel book, {
     String format = 'epub',
     Function(int)? progressCallback,
+    DownloadCancellationToken? cancelToken,
   }) async {
-    final response = await getDownloadStream(book.id.toString(), format);
-    final contentLength = response.contentLength ?? -1;
+    cancelToken?.throwIfCancelled();
 
-    final List<int> bytes = [];
+    final response = await getDownloadStream(book.id.toString(), format);
+    final contentLength = _comparableContentLength(response);
+
+    // BytesBuilder(copy: false) keeps the chunks as they arrive and joins them
+    // once, instead of repeatedly growing and re-copying a List<int>.
+    final builder = BytesBuilder(copy: false);
     int received = 0;
+
     await for (final chunk in response.stream) {
-      bytes.addAll(chunk);
+      cancelToken?.throwIfCancelled();
+
+      builder.add(chunk);
       received += chunk.length;
+
       if (contentLength > 0 && progressCallback != null) {
-        progressCallback((received / contentLength * 100).round());
+        progressCallback(
+          (received / contentLength * 100).round().clamp(0, 100),
+        );
       }
     }
-    return Uint8List.fromList(bytes);
+
+    cancelToken?.throwIfCancelled();
+
+    _validateReceivedSize(
+      receivedBytes: received,
+      contentLength: contentLength,
+      title: book.title,
+    );
+
+    return builder.takeBytes();
   }
 
   /// Mirrors the SAF schema layout of [downloadBookToPath] for plain
@@ -1036,12 +1236,20 @@ class BookDetailsRemoteDatasource {
     return targetDir;
   }
 
+  /// Downloads [book] into the app sandbox (iOS/macOS and any other non-SAF
+  /// platform).
+  ///
+  /// The payload is streamed into a sibling `.part` file, validated and only
+  /// then renamed onto [fileName]. The rename is atomic within the directory,
+  /// so a file at the final path is always a complete book — even if the app is
+  /// killed mid-transfer.
   Future<String> downloadBookToDevice(
     BookDetailsModel book, {
     String format = 'epub',
     DownloadSchema schema = DownloadSchema.flat,
     Function(int)? progressCallback,
     bool reuseExistingFile = true,
+    DownloadCancellationToken? cancelToken,
   }) async {
     logger.i(
       'Downloading "${book.title}" to app sandbox, format: $format, schema: $schema',
@@ -1052,11 +1260,7 @@ class BookDetailsRemoteDatasource {
         book.title.replaceAll(RegExp(r'[\\/:*?"<>|.]'), '').trim();
     final fileName = '${safeTitle.isEmpty ? 'book' : safeTitle}.$format';
 
-    final targetDir = await _getOrCreateLocalSchemaDirectory(
-      dir,
-      book,
-      schema,
-    );
+    final targetDir = await _getOrCreateLocalSchemaDirectory(dir, book, schema);
     final file = File(path.join(targetDir.path, fileName));
 
     if (reuseExistingFile && file.existsSync()) {
@@ -1064,15 +1268,28 @@ class BookDetailsRemoteDatasource {
       return file.path;
     }
 
-    final bytes = await streamBookBytes(
-      book,
+    final partFile = File('${file.path}$downloadPartSuffix');
+
+    final received = await _streamToPartFile(
+      book: book,
       format: format,
+      partFile: partFile,
       progressCallback: progressCallback,
+      cancelToken: cancelToken,
     );
 
-    await file.writeAsBytes(bytes, flush: true);
+    try {
+      if (file.existsSync()) {
+        await file.delete();
+      }
+      await partFile.rename(file.path);
+    } catch (e) {
+      logger.e('Could not publish downloaded file to ${file.path}: $e');
+      await _deleteQuietly(partFile);
+      rethrow;
+    }
 
-    logger.i('Saved book to ${file.path}');
+    logger.i('Saved book to ${file.path} ($received bytes)');
     return file.path;
   }
 

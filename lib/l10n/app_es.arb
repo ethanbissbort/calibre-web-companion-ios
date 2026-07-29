@@ -57,6 +57,7 @@
     "updated": "Actualizado",
     "publisher": "Editorial",
     "language": "Idioma",
+    "systemLanguage": "Idioma del sistema",
     "fileInfo": "Información del archivo",
     "size": "Tamaño",
     "description": "Descripción",

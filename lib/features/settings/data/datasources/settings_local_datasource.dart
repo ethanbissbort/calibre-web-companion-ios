@@ -47,7 +47,8 @@ class SettingsLocalDataSource {
         'default_download_path':
             sharedPreferences.getString('default_download_path') ?? '',
         'download_schema': sharedPreferences.getInt('download_schema') ?? 0,
-        'language_code': sharedPreferences.getString('language_code') ?? 'en',
+        // Absent means "never chosen" -> follow the system language.
+        'language_code': sharedPreferences.getString('language_code'),
         'show_read_now_button':
             sharedPreferences.getBool('show_read_now_button') ?? false,
         'show_send_to_ereader_button':
@@ -233,18 +234,26 @@ class SettingsLocalDataSource {
     }
   }
 
-  Future<void> saveLanguage(String language) async {
+  /// Persists an explicit language choice. A `null` [language] clears the
+  /// stored choice so the app follows the system language again.
+  Future<void> saveLanguage(String? language) async {
     try {
-      await sharedPreferences.setString('language_code', language);
+      if (language == null) {
+        await sharedPreferences.remove('language_code');
+      } else {
+        await sharedPreferences.setString('language_code', language);
+      }
     } catch (e) {
       logger.e('Error saving language: $e');
       throw Exception('Failed to save language: $e');
     }
   }
 
-  Future<String> getLanguage() async {
+  /// Returns the explicitly chosen language, or `null` when the app should
+  /// follow the system language.
+  Future<String?> getLanguage() async {
     try {
-      return sharedPreferences.getString('language_code') ?? 'en';
+      return sharedPreferences.getString('language_code');
     } catch (e) {
       logger.e('Error getting language: $e');
       throw Exception('Failed to get language: $e');

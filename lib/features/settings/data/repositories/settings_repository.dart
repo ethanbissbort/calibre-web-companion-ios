@@ -117,7 +117,8 @@ class SettingsRepository {
     }
   }
 
-  Future<void> setLanguage(String language) async {
+  /// Pass `null` to clear the explicit choice and follow the system language.
+  Future<void> setLanguage(String? language) async {
     try {
       await dataSource.saveLanguage(language);
     } catch (e) {
@@ -125,7 +126,7 @@ class SettingsRepository {
     }
   }
 
-  Future<String> getLanguage() async {
+  Future<String?> getLanguage() async {
     return await dataSource.getLanguage();
   }
 

@@ -256,7 +256,13 @@ class _MyAppState extends State<MyApp> {
                 },
                 localizationsDelegates: AppLocalizations.localizationsDelegates,
                 supportedLocales: AppLocalizations.supportedLocales,
-                locale: Locale(settingsState.languageCode ?? 'en'),
+                // `null` means "follow the system language": Flutter then
+                // resolves the device locale through localeResolutionCallback
+                // below. Only an explicit user choice pins a locale.
+                locale:
+                    settingsState.languageCode == null
+                        ? null
+                        : Locale(settingsState.languageCode!),
                 debugShowCheckedModeBanner: false,
                 localeResolutionCallback: (locale, supportedLocales) {
                   if (locale != null) {

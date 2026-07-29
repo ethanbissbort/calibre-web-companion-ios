@@ -12,7 +12,7 @@ import 'package:calibre_web_companion/features/download_service/data/datasources
 import 'package:calibre_web_companion/features/login_settings/data/datasources/login_settings_local_datasource.dart';
 import 'package:calibre_web_companion/features/login_settings/data/repositories/login_settings_repository.dart';
 
-import '../../test_env.dart';
+import '../../helpers/integration_env.dart';
 
 void main() {
   late DownloadServiceRemoteDataSource dataSource;
@@ -56,7 +56,7 @@ void main() {
 
       expect(books, isA<List>());
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(
@@ -68,7 +68,7 @@ void main() {
 
       expect(books, isA<List>());
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(
@@ -80,7 +80,7 @@ void main() {
 
       expect(config, isNotNull);
     },
-    skip: TestEnv.hasDownloader ? false : 'TestEnv.downloaderUrl not set',
+    skip: skipWithoutDownloader,
   );
 
   test(

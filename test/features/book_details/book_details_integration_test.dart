@@ -34,7 +34,7 @@ void main() {
 
     expect(details, isNotNull);
     expect(details.title, isNotEmpty);
-  });
+  }, skip: skipWithoutCredentials);
 
   test('toggleReadStatus() flips and restores the read flag', () async {
     await setUpDataSource();
@@ -45,7 +45,7 @@ void main() {
 
     final second = await dataSource.toggleReadStatus(book.id);
     expect(second, isTrue);
-  });
+  }, skip: skipWithoutCredentials);
 
   test('toggleArchiveStatus() flips and restores the archive flag', () async {
     await setUpDataSource();
@@ -56,7 +56,7 @@ void main() {
 
     final second = await dataSource.toggleArchiveStatus(book.id);
     expect(second, isTrue);
-  });
+  }, skip: skipWithoutCredentials);
 
   test('getDownloadStream() returns a 200 stream for a real book', () async {
     await setUpDataSource();
@@ -88,7 +88,7 @@ void main() {
       }
       rethrow;
     }
-  });
+  }, skip: skipWithoutCredentials);
 
   test('getMetadataProviders() returns the configured providers', () async {
     await setUpDataSource();
@@ -96,7 +96,7 @@ void main() {
     final providers = await dataSource.getMetadataProviders();
 
     expect(providers, isA<List>());
-  });
+  }, skip: skipWithoutCredentials);
 
   test(
     'searchMetadata() returns results for a query',
@@ -121,6 +121,7 @@ void main() {
       }
     },
     timeout: const Timeout(Duration(seconds: 40)),
+    skip: skipWithoutCredentials,
   );
 
   test('getSeriesPath() resolves without throwing', () async {
@@ -129,7 +130,7 @@ void main() {
     final path = await dataSource.getSeriesPath('Harry Potter');
 
     expect(path == null || path.isNotEmpty, isTrue);
-  });
+  }, skip: skipWithoutCredentials);
 
   test(
     'deleteBook() — POST /delete/{id}',

@@ -2,8 +2,250 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:docman/docman.dart';
 import 'package:logger/logger.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:calibre_web_companion/core/exceptions/cancellation_exception.dart';
+
+/// Suffix of the temporary file a download is streamed into before it is
+/// published to its final location.
+///
+/// A file at the final location is therefore always complete: the rename only
+/// happens after the whole payload has arrived and been validated.
+const String downloadPartSuffix = '.part';
+
+/// Sub-directory of the app's temporary directory used to stage downloads that
+/// cannot be written to their final location directly (the Android SAF path).
+const String downloadStagingDirectoryName = 'cwc_downloads';
+
+/// Cooperative cancellation for a running download.
+///
+/// The token is checked between chunks, so tripping it aborts the HTTP stream,
+/// removes the partial file and surfaces a [CancellationException] — which
+/// callers can tell apart from a genuine failure.
+///
+/// A token is single-use: once cancelled it stays cancelled. Create a fresh one
+/// for every download.
+class DownloadCancellationToken {
+  DownloadCancellationToken();
+
+  static const String defaultReason = 'Download cancelled';
+
+  bool _isCancelled = false;
+  String _reason = defaultReason;
+
+  /// Whether the caller asked for this download to stop.
+  bool get isCancelled => _isCancelled;
+
+  /// Human readable reason, used as the message of the thrown exception.
+  String get reason => _reason;
+
+  /// Trips the token. Repeated calls are ignored, so the first reason wins.
+  void cancel([String? reason]) {
+    if (_isCancelled) return;
+    _isCancelled = true;
+    if (reason != null && reason.isNotEmpty) _reason = reason;
+  }
+
+  /// Throws a [CancellationException] when the token has been tripped.
+  void throwIfCancelled() {
+    if (_isCancelled) throw CancellationException(_reason);
+  }
+}
+
+/// Outcome of comparing the bytes actually received with the `Content-Length`
+/// the server announced.
+enum DownloadSizeCheck {
+  /// Received exactly as many bytes as announced.
+  ok,
+
+  /// The server did not announce a usable length (missing header, chunked
+  /// transfer or a content encoding that makes the header incomparable).
+  unknownLength,
+
+  /// Nothing at all arrived.
+  empty,
+
+  /// Fewer bytes than announced — the transfer was cut short.
+  truncated,
+
+  /// More bytes than announced.
+  overrun,
+}
+
+extension DownloadSizeCheckX on DownloadSizeCheck {
+  /// Whether the payload may be published as a complete book.
+  ///
+  /// [DownloadSizeCheck.overrun] is tolerated: a proxy that rewrites the body
+  /// without fixing `Content-Length` produces it, and the payload is not
+  /// missing anything. Truncation and an empty body are hard failures.
+  bool get isUsable =>
+      this == DownloadSizeCheck.ok ||
+      this == DownloadSizeCheck.unknownLength ||
+      this == DownloadSizeCheck.overrun;
+}
+
+/// Compares [receivedBytes] against [contentLength].
+///
+/// [contentLength] of `-1` (or any non-positive value) means "the server did
+/// not tell us", which is common and must not fail the download.
+DownloadSizeCheck checkDownloadSize({
+  required int receivedBytes,
+  required int contentLength,
+}) {
+  if (receivedBytes <= 0) return DownloadSizeCheck.empty;
+  if (contentLength <= 0) return DownloadSizeCheck.unknownLength;
+  if (receivedBytes < contentLength) return DownloadSizeCheck.truncated;
+  if (receivedBytes > contentLength) return DownloadSizeCheck.overrun;
+  return DownloadSizeCheck.ok;
+}
+
+/// A log/error message describing [check].
+String downloadSizeMessage(
+  DownloadSizeCheck check, {
+  required int receivedBytes,
+  required int contentLength,
+}) {
+  switch (check) {
+    case DownloadSizeCheck.ok:
+      return 'Received all $receivedBytes announced bytes.';
+    case DownloadSizeCheck.unknownLength:
+      return 'Received $receivedBytes bytes (server announced no length).';
+    case DownloadSizeCheck.empty:
+      return 'The server returned an empty file.';
+    case DownloadSizeCheck.truncated:
+      return 'Incomplete download: got $receivedBytes of $contentLength bytes.';
+    case DownloadSizeCheck.overrun:
+      return 'Received $receivedBytes bytes but the server announced '
+          '$contentLength.';
+  }
+}
+
+/// Whether `Content-Length` describes the same bytes we count while reading the
+/// decoded stream.
+///
+/// `Content-Length` counts the *encoded* body, so a compressed response makes
+/// the comparison meaningless (and would produce bogus truncation errors).
+bool isContentLengthComparable(Map<String, String> headers) {
+  String? encoding;
+  for (final entry in headers.entries) {
+    if (entry.key.toLowerCase() == 'content-encoding') {
+      encoding = entry.value;
+      break;
+    }
+  }
+  if (encoding == null) return true;
+  final normalized = encoding.trim().toLowerCase();
+  return normalized.isEmpty || normalized == 'identity';
+}
+
+/// Streams [source] into [sink] without ever holding the whole payload in
+/// memory, reporting progress and honoring [cancelToken].
+///
+/// Returns the number of bytes written. Throws [CancellationException] as soon
+/// as the token is tripped — leaving the loop cancels the underlying HTTP
+/// subscription. The caller owns [sink] and is responsible for closing it and
+/// for removing the partial file on error.
+///
+/// [flushEvery] bounds how much data may sit in the sink's buffer: the pump
+/// awaits a flush once that many bytes have been queued, which both applies
+/// back-pressure to the socket and keeps memory flat for arbitrarily large
+/// books.
+Future<int> pumpDownloadStream({
+  required Stream<List<int>> source,
+  required IOSink sink,
+  int expectedLength = -1,
+  void Function(int percent)? onProgress,
+  DownloadCancellationToken? cancelToken,
+  int flushEvery = 1 << 20,
+}) async {
+  cancelToken?.throwIfCancelled();
+
+  var received = 0;
+  var lastFlushedAt = 0;
+
+  await for (final chunk in source) {
+    cancelToken?.throwIfCancelled();
+
+    sink.add(chunk);
+    received += chunk.length;
+
+    if (received - lastFlushedAt >= flushEvery) {
+      await sink.flush();
+      lastFlushedAt = received;
+    }
+
+    if (expectedLength > 0 && onProgress != null) {
+      final percent = (received / expectedLength * 100).round().clamp(0, 100);
+      onProgress(percent);
+    }
+  }
+
+  cancelToken?.throwIfCancelled();
+  return received;
+}
+
+/// Rate limiter for download progress updates.
+///
+/// A download emits a progress update per network chunk, which floods the log
+/// ring buffer and rebuilds the UI hundreds of times per second. This keeps the
+/// bar moving smoothly while capping updates at one per [minInterval].
+class DownloadProgressThrottle {
+  DownloadProgressThrottle({
+    this.minInterval = const Duration(milliseconds: 250),
+    this.minPercentDelta = 1,
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
+
+  /// Shortest time allowed between two updates.
+  final Duration minInterval;
+
+  /// Smallest percentage change worth reporting.
+  final int minPercentDelta;
+
+  final DateTime Function() _clock;
+
+  int? _lastPercent;
+  DateTime? _lastEmittedAt;
+
+  /// The last percentage that passed the throttle, or `null` if none has yet.
+  int? get lastPercent => _lastPercent;
+
+  /// Whether [percent] should be reported now.
+  ///
+  /// The first update and the terminal 100% always pass so the bar starts and
+  /// finishes exactly where it should.
+  bool shouldEmit(int percent, {bool force = false}) {
+    final now = _clock();
+
+    if (force || _lastPercent == null) {
+      _record(percent, now);
+      return true;
+    }
+    if (percent == _lastPercent) return false;
+    if (percent >= 100) {
+      _record(percent, now);
+      return true;
+    }
+    if ((percent - _lastPercent!).abs() < minPercentDelta) return false;
+    if (now.difference(_lastEmittedAt!) < minInterval) return false;
+
+    _record(percent, now);
+    return true;
+  }
+
+  /// Forgets the previous update so the next one passes unconditionally.
+  void reset() {
+    _lastPercent = null;
+    _lastEmittedAt = null;
+  }
+
+  void _record(int percent, DateTime at) {
+    _lastPercent = percent;
+    _lastEmittedAt = at;
+  }
+}
 
 class DownloadManager {
   final SharedPreferences _prefs;
@@ -32,6 +274,61 @@ class DownloadManager {
     }
 
     await _verifyFilesExist();
+    await sweepStalePartFiles();
+  }
+
+  /// Deletes `*.part` leftovers from downloads that were interrupted by a
+  /// crash, a jetsam kill or a force quit.
+  ///
+  /// Only staging files are touched — a finished book never carries the
+  /// suffix, because it is renamed into place only after validation. Cheap
+  /// enough for startup: two directory walks, and failures are non-fatal.
+  ///
+  /// Returns the number of files removed.
+  Future<int> sweepStalePartFiles() async {
+    final directories = <Directory>[];
+
+    try {
+      directories.add(await getApplicationDocumentsDirectory());
+    } catch (e) {
+      _logger.w('Could not resolve documents directory for .part sweep: $e');
+    }
+
+    try {
+      final temp = await getTemporaryDirectory();
+      directories.add(
+        Directory(p.join(temp.path, downloadStagingDirectoryName)),
+      );
+    } catch (e) {
+      _logger.w('Could not resolve staging directory for .part sweep: $e');
+    }
+
+    var removed = 0;
+    for (final directory in directories) {
+      try {
+        if (!directory.existsSync()) continue;
+        await for (final entity in directory.list(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entity is! File) continue;
+          if (!entity.path.endsWith(downloadPartSuffix)) continue;
+          try {
+            await entity.delete();
+            removed++;
+          } catch (e) {
+            _logger.w('Could not delete stale partial file ${entity.path}: $e');
+          }
+        }
+      } catch (e) {
+        _logger.w('Sweep of ${directory.path} failed: $e');
+      }
+    }
+
+    if (removed > 0) {
+      _logger.i('Removed $removed stale partial download(s).');
+    }
+    return removed;
   }
 
   Future<bool> _doesFileExist(String path) async {

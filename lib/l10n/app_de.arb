@@ -61,6 +61,7 @@
     "updated": "Aktualisiert",
     "publisher": "Verlag",
     "language": "Sprache",
+    "systemLanguage": "Systemsprache",
     "fileInfo": "Dateiinformationen",
     "size": "Größe",
     "description": "Beschreibung",

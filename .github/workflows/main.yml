@@ -47,6 +47,20 @@ jobs:
       - name: Generate Translation Files
         run: flutter gen-l10n
 
+      #4.6 Static analysis. Runs BEFORE the build so a broken tree fails fast
+      # instead of being packaged and published. Errors and warnings are fatal;
+      # infos are not, because the repo carries a handful of pre-existing
+      # info-level lints that shouldn't block a release.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      #4.7 Tests. The `integration` tag is excluded: those tests need a live
+      # Calibre-Web server and credentials that CI does not have. They skip
+      # themselves when unconfigured (see test/test_env.example.dart), but
+      # excluding them by tag keeps CI fast and the intent explicit.
+      - name: Run Tests
+        run: flutter test --exclude-tags integration
+
       #5 Setup Keystore (skipped on forks without the signing secrets).
       # Without these secrets the release build now FAILS instead of silently
       # producing a debug-signed "release" artifact - see the signing guard in
@@ -209,6 +223,13 @@ jobs:
       - name: Generate Translation Files
         run: flutter gen-l10n
 
+      # NOTE: `flutter analyze` and `flutter test` deliberately do NOT run here.
+      # They are platform-independent Dart checks that the `build` job already
+      # ran on a (10x cheaper) ubuntu runner, so repeating them on macOS would
+      # buy no extra signal. Because this job still runs when `build` fails, the
+      # publishing step below instead requires `build` to have succeeded - that
+      # closes the gap without burning macOS minutes.
+
       #4 Build the unsigned IPA for sideloading
       - name: Build Unsigned IPA
         run: bash ios/create_unsigned_ipa.sh
@@ -230,9 +251,15 @@ jobs:
             build/ios/iphoneos/*.ipa
 
       #7 Attach the IPA to the same release draft the Android job created
-      # (skipped on forks without a release TOKEN)
+      # (skipped on forks without a release TOKEN).
+      # Also requires the `build` job to have SUCCEEDED: this job runs even when
+      # `build` fails, and this action would happily create the release draft
+      # itself, so without that guard an IPA could be published from a tree that
+      # failed `flutter analyze` or `flutter test`.
       - name: Attach IPA to Release Draft
-        if: ${{ env.HAS_RELEASE_TOKEN == 'true' }}
+        if: >-
+          ${{ env.HAS_RELEASE_TOKEN == 'true' &&
+          needs.build.result == 'success' }}
         uses: ncipollo/release-action@v1
         with:
           artifacts: 'build/ios/iphoneos/*.ipa'

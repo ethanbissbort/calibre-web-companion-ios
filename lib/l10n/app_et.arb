@@ -20,6 +20,7 @@
     "updated": "Uuendatud",
     "publisher": "Kirjastus",
     "language": "Keel",
+    "systemLanguage": "Süsteemi keel",
     "size": "Suurus",
     "description": "Kirjeldus",
     "english": "inglise keel",

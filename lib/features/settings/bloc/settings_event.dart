@@ -115,7 +115,8 @@ class SubmitFeedback extends SettingsEvent {
 }
 
 class SetLanguage extends SettingsEvent {
-  final String languageCode;
+  /// `null` clears the explicit choice and follows the system language.
+  final String? languageCode;
 
   const SetLanguage(this.languageCode);
 

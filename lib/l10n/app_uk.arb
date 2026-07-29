@@ -60,6 +60,7 @@
     "updated": "Оновлено",
     "publisher": "Видавець",
     "language": "Мова",
+    "systemLanguage": "Мова системи",
     "fileInfo": "Інформація про файл",
     "size": "Розмір",
     "description": "Опис",

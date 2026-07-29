@@ -56,6 +56,7 @@
     "updated": "更新日期",
     "publisher": "出版社",
     "language": "语言",
+    "systemLanguage": "系统语言",
     "fileInfo": "文件信息",
     "size": "文件大小",
     "description": "简介",

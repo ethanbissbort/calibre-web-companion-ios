@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:logger/logger.dart';
@@ -353,7 +355,13 @@ class DownloadServiceRemoteDataSource {
   }
 
   Future<DownloadFilterModel> getSavedFilterSettings() async {
-    final appLanguage = sharedPreferences.getString('language_code') ?? 'en';
+    // An absent `language_code` means "follow the system language", so seed the
+    // default book-language filter from the device locale rather than assuming
+    // English — otherwise a German user with no explicit choice gets a German
+    // UI and an English-only download filter.
+    final appLanguage =
+        sharedPreferences.getString('language_code') ??
+        PlatformDispatcher.instance.locale.languageCode;
 
     try {
       final jsonString = sharedPreferences.getString('dl_filter_settings');

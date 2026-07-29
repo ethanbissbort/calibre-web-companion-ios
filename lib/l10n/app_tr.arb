@@ -40,6 +40,7 @@
     "updated": "Güncellendi",
     "publisher": "Yayıncı",
     "language": "Dil",
+    "systemLanguage": "Sistem dili",
     "fileInfo": "Dosya bilgisi",
     "size": "Boyut",
     "description": "Tanım",
