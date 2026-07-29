@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:logger/logger.dart';
 
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_service_book_model.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_service_status.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_status_response.dart';
@@ -16,11 +17,16 @@ class DownloadServiceRemoteDataSource {
   final Logger logger;
   final LoginSettingsRepository loginSettingsRepository;
 
+  /// The downloader password and session cookie live in the platform
+  /// keychain/keystore, not in [sharedPreferences].
+  final SecureCredentialStore secureCredentials;
+
   DownloadServiceRemoteDataSource({
     required this.client,
     required this.sharedPreferences,
     required this.logger,
     required this.loginSettingsRepository,
+    required this.secureCredentials,
   });
 
   Future<String> _getBaseUrl() async {
@@ -42,7 +48,7 @@ class DownloadServiceRemoteDataSource {
     }
 
     if (includeCookie) {
-      final cookie = sharedPreferences.getString('downloader_cookie');
+      final cookie = secureCredentials.read('downloader_cookie');
       if (cookie != null && cookie.isNotEmpty) {
         if (headers.containsKey('Cookie')) {
           headers['Cookie'] = '${headers['Cookie']}; $cookie';
@@ -58,7 +64,7 @@ class DownloadServiceRemoteDataSource {
   Future<void> _login() async {
     final baseUrl = await _getBaseUrl();
     final username = sharedPreferences.getString('downloader_username');
-    final password = sharedPreferences.getString('downloader_password');
+    final password = secureCredentials.read('downloader_password');
 
     if (username == null ||
         username.isEmpty ||
@@ -85,7 +91,7 @@ class DownloadServiceRemoteDataSource {
       final rawCookie = response.headers['set-cookie'];
       if (rawCookie != null) {
         final cookieValue = rawCookie.split(';').first;
-        await sharedPreferences.setString('downloader_cookie', cookieValue);
+        await secureCredentials.write('downloader_cookie', cookieValue);
         logger.i('Login successful, session cookie stored');
       } else {
         logger.w('Login successful but no Set-Cookie header found');

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:logger/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/settings/data/models/book_details_action.dart';
 import 'package:calibre_web_companion/features/settings/data/models/book_details_section.dart';
 import 'package:calibre_web_companion/features/settings/data/models/discover_layout_config.dart';
@@ -14,9 +15,14 @@ class SettingsLocalDataSource {
   final SharedPreferences sharedPreferences;
   final Logger logger;
 
+  /// The downloader and WebDAV passwords/cookies live in the platform
+  /// keychain/keystore, not in [sharedPreferences].
+  final SecureCredentialStore secureCredentials;
+
   SettingsLocalDataSource({
     required this.sharedPreferences,
     required this.logger,
+    required this.secureCredentials,
   });
 
   Future<SettingsModel> getSettings() async {
@@ -32,7 +38,7 @@ class SettingsLocalDataSource {
         'downloader_username':
             sharedPreferences.getString('downloader_username') ?? '',
         'downloader_password':
-            sharedPreferences.getString('downloader_password') ?? '',
+            secureCredentials.read('downloader_password') ?? '',
         'send2ereader_enabled':
             sharedPreferences.getBool('send2ereader_enabled') ?? false,
         'send2ereader_url':
@@ -53,7 +59,7 @@ class SettingsLocalDataSource {
             false,
         'webdav_url': sharedPreferences.getString('webdav_url') ?? '',
         'webdav_username': sharedPreferences.getString('webdav_username') ?? '',
-        'webdav_password': sharedPreferences.getString('webdav_password') ?? '',
+        'webdav_password': secureCredentials.read('webdav_password') ?? '',
         'webdav_enabled': sharedPreferences.getBool('webdav_enabled') ?? false,
         'epub_scroll_direction':
             sharedPreferences.getString('epub_scroll_direction') ?? 'vertical',
@@ -147,7 +153,7 @@ class SettingsLocalDataSource {
   ) async {
     try {
       await sharedPreferences.setString('downloader_username', username);
-      await sharedPreferences.setString('downloader_password', password);
+      await secureCredentials.write('downloader_password', password);
     } catch (e) {
       logger.e('Error saving downloader credentials: $e');
       throw Exception('Failed to save downloader credentials: $e');
@@ -155,11 +161,11 @@ class SettingsLocalDataSource {
   }
 
   Future<void> saveDownloaderCookie(String cookie) async {
-    await sharedPreferences.setString('downloader_cookie', cookie);
+    await secureCredentials.write('downloader_cookie', cookie);
   }
 
   String? getDownloaderCookie() {
-    return sharedPreferences.getString('downloader_cookie');
+    return secureCredentials.read('downloader_cookie');
   }
 
   Future<void> saveSend2ereaderEnabled(bool enabled) async {
@@ -304,7 +310,7 @@ class SettingsLocalDataSource {
   Future<void> saveWebDavCredentials(String username, String password) async {
     try {
       await sharedPreferences.setString('webdav_username', username);
-      await sharedPreferences.setString('webdav_password', password);
+      await secureCredentials.write('webdav_password', password);
     } catch (e) {
       logger.e('Error saving WebDav credentials: $e');
       throw Exception('Failed to save WebDav credentials: $e');

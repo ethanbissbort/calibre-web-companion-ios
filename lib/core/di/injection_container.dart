@@ -8,6 +8,7 @@ import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/tag_service.dart';
 import 'package:calibre_web_companion/core/services/webdav_sync_service.dart';
 import 'package:calibre_web_companion/core/services/download_manager.dart';
@@ -73,9 +74,17 @@ Future<void> init() async {
   }
   final client = IOClient(ioHttpClient);
 
+  // Must run before anything reads a credential: this pulls secrets out of the
+  // plaintext preferences file into the platform keychain/keystore (once, on
+  // the first launch after upgrading) and populates the in-memory cache the
+  // synchronous read sites depend on.
+  final secureCredentials = SecureCredentialStore(logger: logger);
+  await secureCredentials.init(sharedPreferences);
+
   //! Core
   // Singletons
   getIt.registerSingleton<SharedPreferences>(sharedPreferences);
+  getIt.registerSingleton<SecureCredentialStore>(secureCredentials);
   getIt.registerLazySingleton<AppLogService>(() => appLogService);
   getIt.registerLazySingleton<Logger>(() => logger);
   getIt.registerLazySingleton<http.Client>(() => client);
@@ -131,6 +140,7 @@ Future<void> init() async {
     () => LoginRemoteDataSource(
       apiService: getIt<ApiService>(),
       logger: getIt<Logger>(),
+      secureCredentials: getIt<SecureCredentialStore>(),
     ),
   );
 
@@ -143,7 +153,10 @@ Future<void> init() async {
   );
 
   getIt.registerLazySingleton<ReadingProgressRepository>(
-    () => ReadingProgressRepository(webDavService: getIt()),
+    () => ReadingProgressRepository(
+      webDavService: getIt(),
+      secureCredentials: getIt<SecureCredentialStore>(),
+    ),
   );
 
   // BLoCs
@@ -161,6 +174,7 @@ Future<void> init() async {
       preferences: getIt<SharedPreferences>(),
       logger: getIt<Logger>(),
       apiService: getIt<ApiService>(),
+      secureCredentials: getIt<SecureCredentialStore>(),
     ),
   );
 
@@ -207,6 +221,7 @@ Future<void> init() async {
     () => MeRemoteDataSource(
       apiService: getIt<ApiService>(),
       preferences: getIt<SharedPreferences>(),
+      secureCredentials: getIt<SecureCredentialStore>(),
     ),
   );
 
@@ -300,6 +315,7 @@ Future<void> init() async {
     () => SettingsLocalDataSource(
       logger: getIt<Logger>(),
       sharedPreferences: getIt<SharedPreferences>(),
+      secureCredentials: getIt<SecureCredentialStore>(),
     ),
   );
 
@@ -321,6 +337,7 @@ Future<void> init() async {
       logger: getIt<Logger>(),
       sharedPreferences: getIt<SharedPreferences>(),
       loginSettingsRepository: getIt<LoginSettingsRepository>(),
+      secureCredentials: getIt<SecureCredentialStore>(),
     ),
   );
 

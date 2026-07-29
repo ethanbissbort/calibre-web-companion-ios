@@ -4,9 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logger/logger.dart';
 import 'package:get_it/get_it.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/snackbar.dart';
 import 'package:calibre_web_companion/l10n/app_localizations.dart';
 import 'package:calibre_web_companion/features/homepage/presentation/pages/home_page.dart';
@@ -51,9 +51,9 @@ class _WebViewLoginPageState extends State<WebViewLoginPage> {
   Future<void> _clearSession() async {
     _logger.i('Clearing previous session...');
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('calibre_web_session');
-      await prefs.remove('calibre_web_cookie');
+      final secureCredentials = GetIt.I<SecureCredentialStore>();
+      await secureCredentials.delete('calibre_web_session');
+      await secureCredentials.delete('calibre_web_cookie');
       await GetIt.I<ApiService>().initialize();
     } catch (e) {
       _logger.w('Error clearing session: $e');

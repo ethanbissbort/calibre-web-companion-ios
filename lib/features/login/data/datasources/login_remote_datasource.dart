@@ -6,6 +6,7 @@ import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/exceptions/redirect_exception.dart';
 import 'package:calibre_web_companion/features/login/data/models/login_credentials.dart';
 import 'package:calibre_web_companion/features/login/bloc/login_state.dart';
@@ -14,7 +15,15 @@ class LoginRemoteDataSource {
   final ApiService apiService;
   final Logger logger;
 
-  LoginRemoteDataSource({required this.apiService, required this.logger});
+  /// Credentials never touch `SharedPreferences`; they live in the platform
+  /// keychain/keystore behind this store.
+  final SecureCredentialStore secureCredentials;
+
+  LoginRemoteDataSource({
+    required this.apiService,
+    required this.logger,
+    required this.secureCredentials,
+  });
 
   Future<bool> login(
     LoginCredentials credentials,
@@ -27,7 +36,7 @@ class LoginRemoteDataSource {
 
       await prefs.setString('base_url', credentials.baseUrl);
       await prefs.setString('username', credentials.username);
-      await prefs.setString('password', credentials.password);
+      await secureCredentials.write('password', credentials.password);
       await prefs.setString('server_type', storedServerType);
 
       bool isLoggedIn = false;
@@ -150,7 +159,6 @@ class LoginRemoteDataSource {
   }
 
   Future<bool> _loginCalibreWeb(LoginCredentials credentials) async {
-    final prefs = await SharedPreferences.getInstance();
     if (credentials.username.isEmpty && credentials.password.isEmpty) {
       logger.i('Attempting SSO login by triggering a redirect...');
       await apiService.get(endpoint: '/', followRedirects: false);
@@ -182,7 +190,7 @@ class LoginRemoteDataSource {
       if (isSuccess) {
         if (response.headers.containsKey('set-cookie')) {
           final cookie = response.headers['set-cookie']!;
-          await prefs.setString('calibre_web_session', cookie);
+          await secureCredentials.write('calibre_web_session', cookie);
           await apiService.initialize();
           logger.i('Session cookie saved');
         } else {
@@ -244,8 +252,8 @@ class LoginRemoteDataSource {
     }
 
     final cookie =
-        prefs.getString('calibre_web_cookie') ??
-        prefs.getString('calibre_web_session');
+        secureCredentials.read('calibre_web_cookie') ??
+        secureCredentials.read('calibre_web_session');
 
     if (baseUrl == null || cookie == null || cookie.isEmpty) {
       return false;
@@ -312,8 +320,8 @@ class LoginRemoteDataSource {
 
   Future<void> clearSessionForAccountSwitch() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('calibre_web_session');
-    await prefs.remove('calibre_web_cookie');
+    await secureCredentials.delete('calibre_web_session');
+    await secureCredentials.delete('calibre_web_cookie');
     await prefs.remove('user_agent');
     await prefs.remove('calibre_library_id');
     await prefs.remove('calibre_library_map');
@@ -324,8 +332,7 @@ class LoginRemoteDataSource {
     LoginCredentials credentials,
     ServerType type,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> history = prefs.getStringList('saved_accounts') ?? [];
+    List<String> history = secureCredentials.readList('saved_accounts');
 
     history.removeWhere((item) {
       try {
@@ -342,16 +349,16 @@ class LoginRemoteDataSource {
 
     history.insert(0, jsonEncode(entry));
 
-    await prefs.setStringList('saved_accounts', history);
+    await secureCredentials.writeList('saved_accounts', history);
   }
 
   Future<List<LoginCredentials>> getSavedAccounts() async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> history = prefs.getStringList('saved_accounts') ?? [];
+    List<String> history = secureCredentials.readList('saved_accounts');
 
     final currentBaseUrl = prefs.getString('base_url');
     final currentUsername = prefs.getString('username');
-    final currentPassword = prefs.getString('password');
+    final currentPassword = secureCredentials.read('password');
     final currentServerTypeStr = prefs.getString('server_type');
 
     if (currentBaseUrl != null && currentBaseUrl.isNotEmpty) {
@@ -378,7 +385,7 @@ class LoginRemoteDataSource {
 
         history.insert(0, jsonEncode(newEntry));
 
-        await prefs.setStringList('saved_accounts', history);
+        await secureCredentials.writeList('saved_accounts', history);
         logger.i('Automatically migrated current account to saved history.');
       }
     }
@@ -396,8 +403,7 @@ class LoginRemoteDataSource {
   }
 
   Future<void> removeAccount(LoginCredentials credentials) async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> history = prefs.getStringList('saved_accounts') ?? [];
+    List<String> history = secureCredentials.readList('saved_accounts');
 
     history.removeWhere((item) {
       try {
@@ -409,14 +415,14 @@ class LoginRemoteDataSource {
       }
     });
 
-    await prefs.setStringList('saved_accounts', history);
+    await secureCredentials.writeList('saved_accounts', history);
   }
 
   Future<LoginCredentials?> getStoredCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final baseUrl = prefs.getString('base_url');
     final username = prefs.getString('username');
-    final password = prefs.getString('password');
+    final password = secureCredentials.read('password');
 
     if (baseUrl != null && username != null && password != null) {
       return LoginCredentials(
@@ -519,14 +525,14 @@ class LoginRemoteDataSource {
 
     await prefs.setString('base_url', baseUrl);
     await prefs.setString('user_agent', userAgent);
-    await prefs.setString('calibre_web_cookie', cookieHeader);
-    await prefs.remove('calibre_web_session');
+    await secureCredentials.write('calibre_web_cookie', cookieHeader);
+    await secureCredentials.delete('calibre_web_session');
 
     if (username != null && username.isNotEmpty) {
       await prefs.setString('username', username);
     }
     if (password != null && password.isNotEmpty) {
-      await prefs.setString('password', password);
+      await secureCredentials.write('password', password);
     }
 
     await apiService.initialize();
@@ -545,7 +551,7 @@ class LoginRemoteDataSource {
 
       logger.i('SSO Session successfully validated.');
     } catch (e) {
-      await prefs.remove('calibre_web_cookie');
+      await secureCredentials.delete('calibre_web_cookie');
       logger.e('SSO Validation failed: $e');
       throw Exception('SSO Validation failed: $e');
     }

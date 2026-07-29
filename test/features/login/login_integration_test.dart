@@ -19,6 +19,7 @@ void main() {
     final dataSource = LoginRemoteDataSource(
       apiService: api,
       logger: Logger(level: Level.off),
+      secureCredentials: testSecureCredentials(),
     );
 
     final canAccess = await dataSource.canAccessWebsite();
@@ -30,6 +31,7 @@ void main() {
     final dataSource = LoginRemoteDataSource(
       apiService: api,
       logger: Logger(level: Level.off),
+      secureCredentials: testSecureCredentials(),
     );
 
     final type = await dataSource.getStoredServerType();

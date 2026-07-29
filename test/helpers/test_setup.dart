@@ -1,4 +1,5 @@
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/book_view/data/datasources/book_view_remote_datasource.dart';
 import 'package:calibre_web_companion/features/book_view/data/models/book_view_model.dart';
 import 'package:calibre_web_companion/features/login/bloc/login_state.dart';
@@ -22,6 +23,17 @@ Future<ApiService> setupIntegrationTest() async {
     GetIt.instance.registerSingleton<SharedPreferences>(prefs);
   }
 
+  // No platform keychain under `flutter test`, so the store degrades to
+  // SharedPreferences — which is exactly what these tests seed.
+  if (GetIt.instance.isRegistered<SecureCredentialStore>()) {
+    GetIt.instance.unregister<SecureCredentialStore>();
+  }
+  final secureCredentials = SecureCredentialStore(
+    logger: Logger(level: Level.off),
+  );
+  await secureCredentials.init(prefs);
+  GetIt.instance.registerSingleton<SecureCredentialStore>(secureCredentials);
+
   if (GetIt.instance.isRegistered<ApiService>()) {
     GetIt.instance.unregister<ApiService>();
   }
@@ -33,6 +45,7 @@ Future<ApiService> setupIntegrationTest() async {
   final loginDataSource = LoginRemoteDataSource(
     apiService: apiService,
     logger: logger,
+    secureCredentials: secureCredentials,
   );
 
   final success = await loginDataSource.login(
@@ -65,3 +78,6 @@ Future<BookViewModel> fetchFirstBook(ApiService api) async {
   }
   return books.first;
 }
+
+SecureCredentialStore testSecureCredentials() =>
+    GetIt.instance<SecureCredentialStore>();

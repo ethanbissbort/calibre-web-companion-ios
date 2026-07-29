@@ -4,16 +4,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/features/login_settings/data/models/custom_header.dart';
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 
 class LoginSettingsLocalDataSource {
   final SharedPreferences preferences;
   final Logger logger;
   final ApiService apiService;
 
+  /// Custom header *values* are secrets (bearer tokens, CF-Access secrets), so
+  /// they are kept in the platform keychain/keystore, not in [preferences].
+  final SecureCredentialStore secureCredentials;
+
   LoginSettingsLocalDataSource({
     required this.preferences,
     required this.logger,
     required this.apiService,
+    required this.secureCredentials,
   });
 
   static const String _customHeadersKey = 'custom_login_headers';
@@ -22,7 +28,7 @@ class LoginSettingsLocalDataSource {
   Future<List<CustomHeaderModel>> getCustomHeaders() async {
     try {
       final String jsonString =
-          preferences.getString(_customHeadersKey) ?? '[]';
+          secureCredentials.read(_customHeadersKey) ?? '[]';
       final List<dynamic> jsonList = json.decode(jsonString);
 
       // Header *values* are secrets (bearer tokens, CF-Access secrets), so log
@@ -44,7 +50,7 @@ class LoginSettingsLocalDataSource {
           validHeaders.map((header) => header.toMap()).toList();
 
       final String jsonString = json.encode(jsonList);
-      await preferences.setString(_customHeadersKey, jsonString);
+      await secureCredentials.write(_customHeadersKey, jsonString);
 
       await apiService.initialize();
 

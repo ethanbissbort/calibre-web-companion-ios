@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/l10n/app_localizations.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/snackbar.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_service_book_model.dart';
 import 'package:calibre_web_companion/features/download_service/data/repositories/download_service_repository.dart';
@@ -43,7 +45,9 @@ class _DownloaderResultsSheetState extends State<DownloaderResultsSheet> {
 
   Future<void> _loadCoverContext() async {
     final prefs = await SharedPreferences.getInstance();
-    final cookie = prefs.getString('downloader_cookie');
+    final cookie = GetIt.instance<SecureCredentialStore>().read(
+      'downloader_cookie',
+    );
     if (!mounted) return;
     setState(() {
       _coverBaseUrl = prefs.getString('downloader_url') ?? '';

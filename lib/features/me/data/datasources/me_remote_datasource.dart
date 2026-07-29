@@ -1,13 +1,21 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:calibre_web_companion/core/services/api_service.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/me/data/models/stats_model.dart';
 
 class MeRemoteDataSource {
   final ApiService apiService;
   final SharedPreferences preferences;
 
-  MeRemoteDataSource({required this.apiService, required this.preferences});
+  /// Secrets live in the platform keychain/keystore, not in [preferences].
+  final SecureCredentialStore secureCredentials;
+
+  MeRemoteDataSource({
+    required this.apiService,
+    required this.preferences,
+    required this.secureCredentials,
+  });
 
   Future<StatsModel> getStats() async {
     try {
@@ -78,12 +86,17 @@ class MeRemoteDataSource {
       for (final key in const [
         'base_url',
         'username',
-        'password',
-        'calibre_web_session',
-        'calibre_web_cookie',
         'server_type',
         'calibre_library_id',
         'calibre_library_map',
+      ]) {
+        await preferences.remove(key);
+      }
+
+      for (final key in const [
+        'password',
+        'calibre_web_session',
+        'calibre_web_cookie',
         // Credentials for the auxiliary services are scoped to the server the
         // user just signed out of, so they must not outlive the session.
         // Previously they survived logout, leaving passwords on disk for
@@ -92,14 +105,14 @@ class MeRemoteDataSource {
         'downloader_password',
         'downloader_cookie',
       ]) {
-        await preferences.remove(key);
+        await secureCredentials.delete(key);
       }
 
       // Deliberately preserved: `saved_accounts` (the account switcher's
       // history, which the user clears per-entry via removeAccount) and
       // `custom_login_headers` (reverse-proxy/SSO headers needed to reach the
-      // server again at the next login). Both hold secrets and are moved to
-      // encrypted storage separately.
+      // server again at the next login). Both hold secrets and are kept in
+      // encrypted storage rather than deleted.
 
       await apiService.reset();
     } catch (e) {

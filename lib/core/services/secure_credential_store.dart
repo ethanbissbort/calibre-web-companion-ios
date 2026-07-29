@@ -41,7 +41,11 @@ class SecureCredentialStore {
     : _storage =
           storage ??
           const FlutterSecureStorage(
-            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            // Android encrypts by default in v10+ (the old
+            // `encryptedSharedPreferences` flag is deprecated and ignored).
+            // On iOS, `first_unlock_this_device` keeps the keychain item out
+            // of iCloud/iTunes backups — the exact exposure being closed here
+            // — while still allowing background access after the first unlock.
             iOptions: IOSOptions(
               accessibility: KeychainAccessibility.first_unlock_this_device,
             ),

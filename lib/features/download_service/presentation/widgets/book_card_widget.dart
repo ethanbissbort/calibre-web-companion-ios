@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:calibre_web_companion/shared/widgets/app_skeletonizer.dart';
@@ -10,6 +11,7 @@ import 'package:calibre_web_companion/features/download_service/bloc/download_se
 import 'package:calibre_web_companion/features/download_service/bloc/download_service_event.dart';
 
 import 'package:calibre_web_companion/l10n/app_localizations.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/snackbar.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_service_book_model.dart';
 import 'package:calibre_web_companion/features/download_service/data/models/download_service_status.dart';
@@ -39,7 +41,9 @@ class _BookCardWidgetState extends State<BookCardWidget> {
 
   Future<Map<String, dynamic>> _getImageContext() async {
     final prefs = await SharedPreferences.getInstance();
-    final cookie = prefs.getString('downloader_cookie');
+    final cookie = GetIt.instance<SecureCredentialStore>().read(
+      'downloader_cookie',
+    );
     final baseUrl = prefs.getString('downloader_url') ?? '';
 
     final headers = <String, String>{};

@@ -1,11 +1,18 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/core/services/webdav_sync_service.dart';
 
 class ReadingProgressRepository {
   final WebDavSyncService webDavService;
 
-  ReadingProgressRepository({required this.webDavService});
+  /// The WebDAV password lives in the platform keychain/keystore.
+  final SecureCredentialStore secureCredentials;
+
+  ReadingProgressRepository({
+    required this.webDavService,
+    required this.secureCredentials,
+  });
 
   Future<String?> getBestLocation(String bookUuid) async {
     final prefs = await SharedPreferences.getInstance();
@@ -22,7 +29,7 @@ class ReadingProgressRepository {
       try {
         final url = prefs.getString('webdav_url') ?? '';
         final user = prefs.getString('webdav_username') ?? '';
-        final pass = prefs.getString('webdav_password') ?? '';
+        final pass = secureCredentials.read('webdav_password') ?? '';
 
         if (url.isNotEmpty) {
           webDavService.init(
@@ -88,7 +95,7 @@ class ReadingProgressRepository {
     if (webDavEnabled) {
       final url = prefs.getString('webdav_url') ?? '';
       final user = prefs.getString('webdav_username') ?? '';
-      final pass = prefs.getString('webdav_password') ?? '';
+      final pass = secureCredentials.read('webdav_password') ?? '';
 
       if (url.isNotEmpty) {
         webDavService.init(

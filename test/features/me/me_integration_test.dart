@@ -13,6 +13,7 @@ void main() {
     final dataSource = MeRemoteDataSource(
       apiService: api,
       preferences: testPrefs(),
+      secureCredentials: testSecureCredentials(),
     );
 
     final stats = await dataSource.getStats();
@@ -26,6 +27,7 @@ void main() {
     final dataSource = MeRemoteDataSource(
       apiService: api,
       preferences: testPrefs(),
+      secureCredentials: testSecureCredentials(),
     );
 
     expect(dataSource.getIsOpds(), isFalse);

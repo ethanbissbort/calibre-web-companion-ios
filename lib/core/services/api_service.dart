@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +13,7 @@ import 'package:http/io_client.dart';
 import 'package:calibre_web_companion/core/exceptions/redirect_exception.dart';
 import 'package:calibre_web_companion/core/services/connection_diagnostics.dart';
 import 'package:calibre_web_companion/core/services/digest_auth.dart';
+import 'package:calibre_web_companion/core/services/secure_credential_store.dart';
 import 'package:calibre_web_companion/features/book_view/data/datasources/book_view_remote_datasource.dart';
 
 enum AuthMethod { none, cookie, basic, auto }
@@ -83,6 +85,12 @@ class ApiService {
 
   ApiService._internal();
 
+  /// Credentials live in the platform keychain/keystore, not in the plaintext
+  /// preferences file. `ApiService` is a plain singleton rather than a
+  /// DI-constructed object, so it reaches the store through the locator the
+  /// same way the rest of the app does.
+  SecureCredentialStore get _secrets => GetIt.instance<SecureCredentialStore>();
+
   /// Returns the base URL with base path if available
   String getBaseUrl() {
     if (_baseUrl == null) {
@@ -126,19 +134,19 @@ class ApiService {
     _baseUrl = prefs.getString('base_url');
 
     final storedCookie =
-        prefs.getString('calibre_web_cookie') ??
-        prefs.getString('calibre_web_session');
+        _secrets.read('calibre_web_cookie') ??
+        _secrets.read('calibre_web_session');
 
     if (storedCookie != null) {
       final normalized = buildCookieHeaderFromSetCookie(storedCookie);
       _cookie = normalized.isEmpty ? storedCookie : normalized;
-      await prefs.setString('calibre_web_cookie', _cookie!);
+      await _secrets.write('calibre_web_cookie', _cookie!);
     } else {
       _cookie = null;
     }
 
     _username = prefs.getString('username');
-    _password = prefs.getString('password');
+    _password = _secrets.read('password');
     _basePath = prefs.getString('base_path') ?? '';
     _userAgent = prefs.getString('user_agent'); // User Agent laden
     _allowSelfSigned = prefs.getBool('allow_self_signed') ?? false;
@@ -363,8 +371,7 @@ class ApiService {
           !response.body.contains('flash_danger');
       final setCookie = response.headers['set-cookie'];
       if (ok && setCookie != null && setCookie.isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('calibre_web_session', setCookie);
+        await _secrets.write('calibre_web_session', setCookie);
         await initialize();
         _logger.i('Re-authentication successful');
         return true;
@@ -511,13 +518,12 @@ class ApiService {
         _logger.d('GET $uri -> ${response.statusCode}');
 
         if (response.headers.containsKey('set-cookie')) {
-          final prefs = await SharedPreferences.getInstance();
           final newCookie = buildCookieHeaderFromSetCookie(
             response.headers['set-cookie'],
           );
           final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
           if (merged.trim().isNotEmpty) {
-            await prefs.setString('calibre_web_cookie', merged);
+            await _secrets.write('calibre_web_cookie', merged);
             _cookie = merged;
           }
         }
@@ -801,13 +807,12 @@ class ApiService {
           _logger.i('Multipart POST response status: ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -869,13 +874,12 @@ class ApiService {
           );
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -916,13 +920,12 @@ class ApiService {
           _logger.d('Multipart POST $uri -> ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -979,13 +982,12 @@ class ApiService {
           _logger.d('POST $uri -> ${response.statusCode}');
 
           if (response.headers.containsKey('set-cookie')) {
-            final prefs = await SharedPreferences.getInstance();
             final newCookie = buildCookieHeaderFromSetCookie(
               response.headers['set-cookie'],
             );
             final merged = _mergeCookieHeaders(_cookie ?? '', newCookie);
             if (merged.trim().isNotEmpty) {
-              await prefs.setString('calibre_web_cookie', merged);
+              await _secrets.write('calibre_web_cookie', merged);
               _cookie = merged;
             }
           }
@@ -1229,8 +1231,7 @@ class ApiService {
 
   /// Process custom headers, replacing placeholders with actual values
   Future<Map<String, String>> _processCustomHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final headersJson = prefs.getString('custom_login_headers') ?? '[]';
+    final headersJson = _secrets.read('custom_login_headers') ?? '[]';
 
     final List<dynamic> decodedList = jsonDecode(headersJson);
     final List<Map<String, String>> customHeaders =
