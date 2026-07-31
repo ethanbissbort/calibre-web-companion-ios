@@ -230,6 +230,26 @@ jobs:
       # publishing step below instead requires `build` to have succeeded - that
       # closes the gap without burning macOS minutes.
 
+      #3.6 On-device tests. These run on a booted simulator and exercise what
+      # the Dart-VM tests cannot: the real Keychain, real sandbox paths, and
+      # cold-start/DI integrity. They need no server and no credentials.
+      # Non-blocking for now: they have not yet had a green run on real
+      # hardware, and a flaky UI finder should not block the IPA. Flip
+      # continue-on-error off once they have proven stable.
+      - name: Boot iOS Simulator
+        continue-on-error: true
+        run: |
+          set -x
+          device=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v))")
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b || true
+          echo "SIMULATOR_UDID=$device" >> "$GITHUB_ENV"
+
+      - name: Run On-Device Tests
+        continue-on-error: true
+        run: flutter test integration_test/ -d "$SIMULATOR_UDID"
+
       #4 Build the unsigned IPA for sideloading
       - name: Build Unsigned IPA
         run: bash ios/create_unsigned_ipa.sh

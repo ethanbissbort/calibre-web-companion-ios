@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
@@ -79,7 +80,18 @@ Future<void> init() async {
   // the first launch after upgrading) and populates the in-memory cache the
   // synchronous read sites depend on.
   final secureCredentials = SecureCredentialStore(logger: logger);
-  await secureCredentials.init(sharedPreferences);
+  // This is the first await on the launch path, and a keychain call can block
+  // (for example on a device whose keychain is not yet unlocked). Bound it, so
+  // a stuck platform call degrades to the legacy behavior instead of hanging
+  // startup on a blank screen. The store handles its own failures internally;
+  // this only covers the case where it never returns at all.
+  try {
+    await secureCredentials
+        .init(sharedPreferences)
+        .timeout(const Duration(seconds: 10));
+  } on TimeoutException catch (e) {
+    logger.e('Secure storage init timed out, continuing without it: $e');
+  }
 
   //! Core
   // Singletons
