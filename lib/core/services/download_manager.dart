@@ -19,6 +19,13 @@ const String downloadPartSuffix = '.part';
 /// cannot be written to their final location directly (the Android SAF path).
 const String downloadStagingDirectoryName = 'cwc_downloads';
 
+/// How stale a `.part` file must be before the startup sweep will delete it.
+///
+/// Guards two cases: a download running concurrently with the sweep, and a
+/// user's own unrelated `.part` file sitting in the Files.app-visible Documents
+/// directory, which they may have only just put there.
+const Duration _partFileGracePeriod = Duration(hours: 6);
+
 /// Cooperative cancellation for a running download.
 ///
 /// The token is checked between chunks, so tripping it aborts the HTTP stream,
@@ -284,8 +291,12 @@ class DownloadManager {
   /// suffix, because it is renamed into place only after validation. Cheap
   /// enough for startup: two directory walks, and failures are non-fatal.
   ///
+  /// [olderThan] overrides how stale a partial must be to qualify; tests pass
+  /// [Duration.zero] to sweep files they just created.
+  ///
   /// Returns the number of files removed.
-  Future<int> sweepStalePartFiles() async {
+  Future<int> sweepStalePartFiles({Duration? olderThan}) async {
+    final grace = olderThan ?? _partFileGracePeriod;
     final directories = <Directory>[];
 
     try {
@@ -313,6 +324,18 @@ class DownloadManager {
         )) {
           if (entity is! File) continue;
           if (!entity.path.endsWith(downloadPartSuffix)) continue;
+          // The Documents directory is user-visible in Files.app (we set
+          // UIFileSharingEnabled), so a user's own file that happens to end in
+          // .part must not be collateral damage. Only remove partials that are
+          // still actively growing-or-abandoned, i.e. older than a launch ago;
+          // a fresh one may belong to a download running right now.
+          try {
+            final stat = entity.statSync();
+            if (DateTime.now().difference(stat.modified) < grace) continue;
+          } catch (_) {
+            // Unstattable: leave it alone rather than guess.
+            continue;
+          }
           try {
             await entity.delete();
             removed++;
@@ -331,9 +354,20 @@ class DownloadManager {
     return removed;
   }
 
+  /// True when `path` is a Storage Access Framework document URI rather than a
+  /// plain filesystem path.
+  ///
+  /// Android downloads land in either form: SAF when the user has picked a
+  /// download folder, and a plain sandbox path when they have not.
+  static bool _isSafUri(String path) => path.startsWith('content://');
+
   Future<bool> _doesFileExist(String path) async {
     try {
-      if (Platform.isAndroid) {
+      // Only SAF URIs can be resolved by DocumentFile. Feeding it a plain
+      // sandbox path (which is what downloadBookToDevice returns when no SAF
+      // folder is configured) yields null, which used to be read as "missing"
+      // and silently unregistered a book that was sitting right there.
+      if (Platform.isAndroid && _isSafUri(path)) {
         final doc = await DocumentFile.fromUri(path);
         return doc?.exists ?? false;
       } else {
@@ -380,6 +414,15 @@ class DownloadManager {
   /// inconclusive — the container may simply have moved somewhere this code
   /// does not recognise — so the registry entry is kept rather than dropped,
   /// since dropping it loses the book from the offline library for good.
+  /// Whether a file reported as absent is *definitely* gone, as opposed to
+  /// merely unresolvable — only the former justifies dropping the registry
+  /// entry.
+  ///
+  /// On Android the answer from [_doesFileExist] is authoritative either way:
+  /// DocumentFile resolves a SAF URI, and `File.existsSync` resolves a plain
+  /// sandbox path. The one inconclusive case is an iOS/macOS path that could
+  /// not be re-anchored to the current app container, since the file may still
+  /// be there under a path we failed to reconstruct.
   bool _isConfirmedMissing(String path) =>
       Platform.isAndroid || _canRelocate(path);
 

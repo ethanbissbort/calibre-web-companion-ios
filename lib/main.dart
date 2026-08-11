@@ -48,6 +48,10 @@ import 'package:calibre_web_companion/features/sync/bloc/sync_event.dart';
 final navigatorKey = GlobalKey<NavigatorState>();
 final GetIt getIt = GetIt.instance;
 
+/// Whether `runApp` has been reached, so a late startup error doesn't replace a
+/// running app with the failure screen.
+bool _appStarted = false;
+
 void main() async {
   AppLogService? appLogService;
 
@@ -133,9 +137,18 @@ void main() async {
           child: MyApp(savedThemeMode: savedThemeMode),
         ),
       );
+      _appStarted = true;
     },
     (error, stack) {
       appLogService?.add('Zoned error: $error\n$stack');
+      // If startup itself failed, `runApp` was never reached and the user is
+      // staring at a blank screen with no way to report what happened —
+      // `appLogService` is still null in that window, so even the log above is
+      // a no-op. Put something diagnosable on screen instead.
+      if (!_appStarted) {
+        _appStarted = true;
+        runApp(_StartupFailureApp(error: error, stack: stack));
+      }
     },
     zoneSpecification: ZoneSpecification(
       print: (self, parent, zone, line) {
@@ -144,6 +157,59 @@ void main() async {
       },
     ),
   );
+}
+
+/// Shown when startup failed before `runApp` could be reached.
+///
+/// Deliberately dependency-free: no localizations, no theme from settings, no
+/// service locator — any of those may be exactly what failed. It is not
+/// localized for the same reason, and because a user who sees this needs to be
+/// able to paste the text into a bug report.
+class _StartupFailureApp extends StatelessWidget {
+  const _StartupFailureApp({required this.error, this.stack});
+
+  final Object error;
+  final StackTrace? stack;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.error_outline, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  'Calibre Web Companion could not start',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Restarting the app usually helps. If it keeps happening, '
+                  'please report the details below.',
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      '$error\n\n${stack ?? ''}',
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();

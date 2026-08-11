@@ -101,6 +101,36 @@ Then in Xcode:
 
 Alternatively, `flutter run` from the repo root does all of the above (including `pod install`) once the team is set in Xcode.
 
+#### Running the tests
+
+There are two suites, and they run in different places:
+
+```sh
+# Unit/widget tests — run on the Dart VM, no device needed. CI gates on these.
+flutter test --exclude-tags integration
+
+# On-device tests — need a booted simulator or a connected device.
+flutter test integration_test/
+```
+
+The on-device suite exercises what a fake cannot: the real Keychain/Keystore, the
+app sandbox paths (including the container-UUID change that invalidates stored
+paths after every iOS app update), and cold-start/DI integrity. It needs no
+server and no credentials.
+
+To run it from Xcode with **⌘U**, select the aggregate entrypoint first — Xcode
+runs whichever Dart entrypoint the last build configured:
+
+```sh
+flutter build ios --config-only integration_test/all_tests.dart
+open ios/Runner.xcworkspace   # then ⌘U
+```
+
+The integration tests that talk to a live Calibre-Web server live under `test/`
+and are tagged `integration`; they skip themselves unless credentials are
+provided. Copy `test/test_env.example.dart` to `test/test_env.dart` (gitignored)
+or set the `CWC_TEST_*` environment variables to enable them.
+
 #### iOS notes
 
 - Downloaded and offline-synced books are stored in the app's own folder, which you can browse in the **Files** app under **On My iPhone/iPad → Calibre Web Companion**.
